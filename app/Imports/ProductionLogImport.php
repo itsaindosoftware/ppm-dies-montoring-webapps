@@ -96,6 +96,27 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         $shift = (int) ($row['shift'] ?? 1);
         $line = $this->cleanValue($row['line'] ?? null, $die->line);
 
+        // Check for duplicate: same die (part_number/part_name/model/customer) + same date + same shift
+        // If data already exists in database, skip entirely (do not overwrite or accumulate)
+        $existingLog = ProductionLog::where('die_id', $die->id)
+            ->where('production_date', $date->format('Y-m-d'))
+            ->where('shift', $shift)
+            ->first();
+
+        if ($existingLog) {
+            $this->skippedRows[] = [
+                'row_number' => $rowNum,
+                'part_number' => $partNumber,
+                'part_name' => $die->part_name,
+                'date' => $date->format('d-M-Y'),
+                'output' => $outputQty,
+                // You cannot double input on the same date (pesan erornya revisi dari pak didin)
+                // 'reason' => "Data sudah ada di database (tanggal: {$existingLog->production_date->format('d-M-Y')}, shift: {$existingLog->shift}, output existing: {$existingLog->output_qty})",
+                'reason' => "You cannot double input on the same date (date: {$existingLog->production_date->format('d-M-Y')})",
+            ];
+            return null;
+        }
+
         // Update qty_die on die master if provided in import
         $rawQtyDie = $row['qty_die'] ?? $row['qtydie'] ?? $row['qty_dies'] ?? null;
         if (!empty($rawQtyDie)) {
@@ -111,45 +132,6 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         $die->refresh();
         $die->load(['machineModel.tonnageStandard', 'customer']);
         $this->checkAndSendAlert($die, $previousStatus, $die->ppm_status);
-
-        // Check for existing ProductionLog for this die (accumulate output qty)
-        // Priority: 1) same die+date+shift, 2) same die+date, 3) latest record for die
-        $existingLog = ProductionLog::where('die_id', $die->id)
-            ->where('production_date', $date->format('Y-m-d'))
-            ->where('shift', $shift)
-            ->first();
-
-        if (!$existingLog) {
-            $existingLog = ProductionLog::where('die_id', $die->id)
-                ->where('production_date', $date->format('Y-m-d'))
-                ->first();
-        }
-
-        if (!$existingLog) {
-            $existingLog = ProductionLog::where('die_id', $die->id)
-                ->orderByDesc('production_date')
-                ->orderByDesc('shift')
-                ->first();
-        }
-
-        if ($existingLog) {
-            $oldQty = $existingLog->output_qty;
-            $existingLog->increment('output_qty', $outputQty);
-
-            $this->accumulatedCount++;
-            $this->accumulatedRows[] = [
-                'row_number' => $rowNum,
-                'part_number' => $partNumber,
-                'part_name' => $die->part_name,
-                'date' => $existingLog->production_date->format('d-M-Y'),
-                'shift' => $existingLog->shift,
-                'old_qty' => $oldQty,
-                'added_qty' => $outputQty,
-                'new_qty' => $oldQty + $outputQty,
-            ];
-
-            return null; // Don't create new record
-        }
 
         $this->importedCount++;
 
@@ -273,7 +255,7 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         // Parse time format like "1:27"
         if (strpos($value, ':') !== false) {
             $parts = explode(':', $value);
-            return (float) $parts[0] + ((float) ($parts[1] ??  0) / 60);
+            return (float) $parts[0] + ((float) ($parts[1] ?? 0) / 60);
         }
 
         return null;
@@ -326,15 +308,25 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         }
 
         $advancedAlertStatuses = [
-            'orange_alerted', 'lot_date_set', 'ppm_scheduled', 'schedule_approved',
-            'red_alerted', 'transferred_to_mtn', 'ppm_in_progress',
-            'additional_repair', 'ppm_completed',
+            'orange_alerted',
+            'lot_date_set',
+            'ppm_scheduled',
+            'schedule_approved',
+            'red_alerted',
+            'transferred_to_mtn',
+            'ppm_in_progress',
+            'additional_repair',
+            'ppm_completed',
         ];
 
         $recipients = User::where('is_active', true)
             ->whereIn('role', [
-                User::ROLE_ADMIN, User::ROLE_MTN_DIES, User::ROLE_MGR_GM,
-                User::ROLE_MD, User::ROLE_PPIC, User::ROLE_PRODUCTION,
+                User::ROLE_ADMIN,
+                User::ROLE_MTN_DIES,
+                User::ROLE_MGR_GM,
+                User::ROLE_MD,
+                User::ROLE_PPIC,
+                User::ROLE_PRODUCTION,
             ])
             ->get();
 
