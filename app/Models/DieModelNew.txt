@@ -502,6 +502,37 @@ class DieModel extends Model
         return $lots;
     }
 
+    // ==================== HELPERS ====================
+
+    /**
+     * Extract the base part number by stripping suffixes in parentheses.
+     * e.g. "62741-74U00 (Blank)" → "62741-74U00"
+     * e.g. "62741-74U00 (5h)"    → "62741-74U00"
+     * e.g. "62741-74U00"         → "62741-74U00"
+     */
+    public static function extractBasePartNumber(string $partNumber): string
+    {
+        return trim(preg_replace('/\s*\(.*?\)\s*$/', '', trim($partNumber)));
+    }
+
+    /**
+     * Find all related dies that share the same base part number.
+     * Excludes the current die from the result.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, \App\Models\DieModel>
+     */
+    public function getRelatedDies(): \Illuminate\Database\Eloquent\Collection
+    {
+        $base = static::extractBasePartNumber($this->part_number);
+
+        return static::where('id', '!=', $this->id)
+            ->where(function ($q) use ($base) {
+                $q->where('part_number', $base)
+                    ->orWhere('part_number', 'LIKE', $base . ' (%');
+            })
+            ->get();
+    }
+
     // ==================== SCOPES ====================
 
     public function scopeActive($query)

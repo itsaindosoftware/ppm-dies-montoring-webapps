@@ -46,22 +46,8 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             return null;
         }
 
-        // Find die by part number - first try exact match
+        // Find die by part number
         $die = DieModel::where('part_number', $partNumber)->first();
-        $matchedByBase = false;
-
-        // If no exact match, try matching by base part number
-        // Strip parenthetical suffix like (AC), (CC), (A), (R), (L), (C), etc.
-        if (!$die) {
-            $basePartNumber = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $partNumber));
-
-            if ($basePartNumber !== $partNumber && !empty($basePartNumber)) {
-                $die = DieModel::where('part_number', $basePartNumber)->first();
-                if ($die) {
-                    $matchedByBase = true;
-                }
-            }
-        }
 
         // Flexible key lookup for output qty
         $rawOutput = $row['total_output_prod_pcs'] ?? $row['total_output_prod'] ?? $row['output_qty'] ?? $row['output'] ?? $row['qty'] ?? 0;
@@ -118,46 +104,6 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             ->first();
 
         if ($existingLog) {
-            // If matched by base part number (variant suffix stripped), accumulate quantity
-            // e.g. 65112-I6050 (AC) + 65112-I6050 (CC) → both accumulate to die 65112-I6050
-            if ($matchedByBase) {
-                $existingLog->increment('output_qty', $outputQty);
-
-                // Update accumulation_stroke for ALL variant dies with same base part number
-                $basePartNumber = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $die->part_number));
-
-                $variantDies = DieModel::where(function ($query) use ($basePartNumber, $die) {
-                    $query->where('part_number', $basePartNumber)
-                        ->orWhere('part_number', 'LIKE', $basePartNumber . ' (%');
-                })
-                    ->where('customer_id', $die->customer_id)
-                    ->where('model', $die->model)
-                    ->get();
-
-                foreach ($variantDies as $variantDie) {
-                    $previousStatus = $variantDie->ppm_status;
-                    $variantDie->increment('accumulation_stroke', $outputQty);
-                    $variantDie->refresh();
-                    $variantDie->load(['machineModel.tonnageStandard', 'customer']);
-                    $this->checkAndSendAlert($variantDie, $previousStatus, $variantDie->ppm_status);
-                }
-
-                $this->accumulatedCount++;
-                $this->accumulatedRows[] = [
-                    'row_number' => $rowNum,
-                    'part_number' => $partNumber,
-                    'part_name' => $die->part_name,
-                    'date' => $date->format('d-M-Y'),
-                    'shift' => $shift,
-                    'output' => $outputQty,
-                    'accumulated_to' => $die->part_number,
-                    'new_total' => $existingLog->output_qty,
-                    'reason' => "Diakumulasi ke part {$die->part_number} (total: {$existingLog->output_qty})",
-                ];
-
-                return null;
-            }
-
             $this->skippedRows[] = [
                 'row_number' => $rowNum,
                 'part_number' => $partNumber,
@@ -180,27 +126,12 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             }
         }
 
-        // Update die accumulation stroke for ALL variant dies with same base part number
-        // This ensures all variants (AC), (CC), (A), (R), (L), (C) etc. show the same lot progress
-        $basePartNumber = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $die->part_number));
-
-        // Find all dies that match the base part number (with or without suffix)
-        $variantDies = DieModel::where(function ($query) use ($basePartNumber, $die) {
-            $query->where('part_number', $basePartNumber)
-                ->orWhere('part_number', 'LIKE', $basePartNumber . ' (%');
-        })
-            ->where('customer_id', $die->customer_id)
-            ->where('model', $die->model)
-            ->get();
-
-        // Update accumulation_stroke for all variant dies
-        foreach ($variantDies as $variantDie) {
-            $previousStatus = $variantDie->ppm_status;
-            $variantDie->increment('accumulation_stroke', $outputQty);
-            $variantDie->refresh();
-            $variantDie->load(['machineModel.tonnageStandard', 'customer']);
-            $this->checkAndSendAlert($variantDie, $previousStatus, $variantDie->ppm_status);
-        }
+        // Update die accumulation stroke and check for alert
+        $previousStatus = $die->ppm_status;
+        $die->increment('accumulation_stroke', $outputQty);
+        $die->refresh();
+        $die->load(['machineModel.tonnageStandard', 'customer']);
+        $this->checkAndSendAlert($die, $previousStatus, $die->ppm_status);
 
         $this->importedCount++;
 

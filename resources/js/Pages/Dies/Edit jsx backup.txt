@@ -17,7 +17,6 @@ export default function DieEdit({ auth, die, customers, machineModels }) {
         location: die.location || '',
         notes: die. notes || '',
         is_4lot_check: die.is_4lot_check || false,
-        accumulate_related_parts: die.accumulate_related_parts || false,
     });
 
     const handleSubmit = (e) => {
@@ -239,27 +238,6 @@ export default function DieEdit({ auth, die, customers, machineModels }) {
                                 <label htmlFor="is_4lot_check" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                     4-Lot Check <span className="text-xs text-gray-500">(Reset accumulation after PPM/polishing)</span>
                                 </label>
-                            </div>
-
-                            {/* Accumulate Related Parts */}
-                            <div className="flex items-start gap-3">
-                                <input
-                                    type="checkbox"
-                                    id="accumulate_related_parts"
-                                    checked={data.accumulate_related_parts}
-                                    onChange={(e) => setData('accumulate_related_parts', e.target.checked)}
-                                    className="mt-0.5 rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900"
-                                />
-                                <div>
-                                    <label htmlFor="accumulate_related_parts" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                                        Accumulate several of the same part numbers
-                                    </label>
-                                    <p className="text-xs text-gray-500 mt-0.5">
-                                        
-                                        (example: <span className="font-mono">{die.part_number}</span> and its variants)
-                                        will be considered as a single group for PPM orange/red status.
-                                    </p>
-                                </div>
                             </div>
 
                             {/* Location */}
