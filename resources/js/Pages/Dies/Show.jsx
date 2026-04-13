@@ -487,7 +487,7 @@ export default function DieShow({ auth, die }) {
                             </dl>
                         </div>
 
-                        {/* PPM Flow Status Card - only show when PPM flow is active */}
+                        {/* PPM Flow Status Card - only show when PPM flow is actives */}
                         {die.ppm_alert_status && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
