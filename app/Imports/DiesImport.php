@@ -76,6 +76,8 @@ class DiesImport implements ToModel, WithHeadingRow, WithValidation, SkipsEmptyR
             'customer' => $row['customer'] ?? '-',
         ];
 
+        $lastStroke = (int) ($row['last_stroke'] ?? 0);
+
         return new DieModel([
             'part_number' => $row['part_number'],
             'part_name' => $row['part_name'] ?? 'Unknown',
@@ -85,8 +87,9 @@ class DiesImport implements ToModel, WithHeadingRow, WithValidation, SkipsEmptyR
             'line' => $row['line'] ?? null,
             'model' => $row['model'] ?? null,
             'lot_size' => (int) ($row['lot_size'] ?? 600),
-            'accumulation_stroke' => 0,
-            'last_stroke' => (int) ($row['last_stroke'] ?? 0),
+            // Jika last_stroke diisi, seed accumulation_stroke dari last_stroke
+            'accumulation_stroke' => $lastStroke > 0 ? $lastStroke : 0,
+            'last_stroke' => $lastStroke,
             'ppm_standard' => (int) ($row['ppm_standard'] ?? 6000),
             'last_ppm_date' => $this->parseDate($row['last_ppm_dies'] ?? $row['last_ppm_date'] ?? null),
             'status' => 'active',
