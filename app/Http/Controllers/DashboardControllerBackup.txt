@@ -115,21 +115,36 @@ class DashboardController extends Controller
      */
     protected function getTopDiesByGroupData(): array
     {
+        $dies = DieModel::with(['machineModel.tonnageStandard', 'customer'])
+            ->active()
+            ->get();
+
         $groups = [
-            'A1' => ['label' => 'A1 Line', 'color' => '#22c55e', 'dies' => []],
-            'A2' => ['label' => 'A2 Line', 'color' => '#3b82f6', 'dies' => []],
-            'B1' => ['label' => 'B1 Line', 'color' => '#f97316', 'dies' => []],
-            'B2' => ['label' => 'B2 Line', 'color' => '#ef4444', 'dies' => []],
+            'A1' => ['label' => 'A1 (Lot 1 - Safe)', 'color' => '#22c55e', 'dies' => []],
+            'A2' => ['label' => 'A2 (Lot 2 - Normal)', 'color' => '#3b82f6', 'dies' => []],
+            'B1' => ['label' => 'B1 (Lot 3 - Warning)', 'color' => '#f97316', 'dies' => []],
+            'B2' => ['label' => 'B2 (Lot 4 - Critical)', 'color' => '#ef4444', 'dies' => []],
         ];
 
-        // A1: khusus dies dengan line = '800T', sort by accumulation_stroke terbesar
-        $dies800T = DieModel::with(['machineModel.tonnageStandard', 'customer'])
-            ->active()
-            ->where('line', '800T')
-            ->get();
+        foreach ($dies as $die) {
+            $currentLot = $die->current_lot;
+            $lotInCycle = (($currentLot - 1) % 4) + 1; // Position within current 4-lot cycle
 
-        foreach ($dies800T as $die) {
-            $groups['A1']['dies'][] = [
+            $group = match (true) {
+                $die->ppm_status === 'red' => 'B2',
+                $die->ppm_status === 'orange' => 'B1',
+                $lotInCycle <= 1 => 'A1',
+                $lotInCycle <= 2 => 'A2',
+                $lotInCycle <= 3 => 'B1',
+                default => 'B2',
+            };
+
+            // Override with explicit die_group if set
+            if ($die->die_group && isset($groups[$die->die_group])) {
+                $group = $die->die_group;
+            }
+
+            $groups[$group]['dies'][] = [
                 'id' => $die->id,
                 'encrypted_id' => $die->encrypted_id,
                 'part_number' => $die->part_number,
@@ -137,90 +152,17 @@ class DashboardController extends Controller
                 'stroke_percentage' => $die->stroke_percentage,
                 'accumulation_stroke' => $die->accumulation_stroke,
                 'standard_stroke' => $die->standard_stroke,
-                'current_lot' => $die->current_lot,
+                'current_lot' => $currentLot,
                 'ppm_status' => $die->ppm_status,
             ];
         }
 
-        // Sort A1 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['A1']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
-        $groups['A1']['dies'] = array_slice($groups['A1']['dies'], 0, 10);
-        $groups['A1']['count'] = count($groups['A1']['dies']);
-
-        // A2: khusus dies dengan line = '1200T', sort by accumulation_stroke terbesar
-        $dies1200T = DieModel::with(['machineModel.tonnageStandard', 'customer'])
-            ->active()
-            ->where('line', '1200T')
-            ->get();
-
-        foreach ($dies1200T as $die) {
-            $groups['A2']['dies'][] = [
-                'id' => $die->id,
-                'encrypted_id' => $die->encrypted_id,
-                'part_number' => $die->part_number,
-                'customer' => $die->customer?->code,
-                'stroke_percentage' => $die->stroke_percentage,
-                'accumulation_stroke' => $die->accumulation_stroke,
-                'standard_stroke' => $die->standard_stroke,
-                'current_lot' => $die->current_lot,
-                'ppm_status' => $die->ppm_status,
-            ];
+        // Sort each group by stroke percentage descending and take top 10
+        foreach ($groups as $key => &$group) {
+            usort($group['dies'], fn($a, $b) => $b['stroke_percentage'] <=> $a['stroke_percentage']);
+            $group['dies'] = array_slice($group['dies'], 0, 10);
+            $group['count'] = count($group['dies']);
         }
-
-        // Sort A2 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['A2']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
-        $groups['A2']['dies'] = array_slice($groups['A2']['dies'], 0, 10);
-        $groups['A2']['count'] = count($groups['A2']['dies']);
-
-        // B1: khusus dies dengan line = 'Progressive', sort by accumulation_stroke terbesar
-        $diesProgressive = DieModel::with(['machineModel.tonnageStandard', 'customer'])
-            ->active()
-            ->where('line', 'Progressive')
-            ->get();
-
-        foreach ($diesProgressive as $die) {
-            $groups['B1']['dies'][] = [
-                'id' => $die->id,
-                'encrypted_id' => $die->encrypted_id,
-                'part_number' => $die->part_number,
-                'customer' => $die->customer?->code,
-                'stroke_percentage' => $die->stroke_percentage,
-                'accumulation_stroke' => $die->accumulation_stroke,
-                'standard_stroke' => $die->standard_stroke,
-                'current_lot' => $die->current_lot,
-                'ppm_status' => $die->ppm_status,
-            ];
-        }
-
-        // Sort B1 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['B1']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
-        $groups['B1']['dies'] = array_slice($groups['B1']['dies'], 0, 10);
-        $groups['B1']['count'] = count($groups['B1']['dies']);
-
-        // B2: khusus dies dengan line = '250T', sort by accumulation_stroke terbesar
-        $dies250T = DieModel::with(['machineModel.tonnageStandard', 'customer'])
-            ->active()
-            ->where('line', '250T')
-            ->get();
-
-        foreach ($dies250T as $die) {
-            $groups['B2']['dies'][] = [
-                'id' => $die->id,
-                'encrypted_id' => $die->encrypted_id,
-                'part_number' => $die->part_number,
-                'customer' => $die->customer?->code,
-                'stroke_percentage' => $die->stroke_percentage,
-                'accumulation_stroke' => $die->accumulation_stroke,
-                'standard_stroke' => $die->standard_stroke,
-                'current_lot' => $die->current_lot,
-                'ppm_status' => $die->ppm_status,
-            ];
-        }
-
-        // Sort B2 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['B2']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
-        $groups['B2']['dies'] = array_slice($groups['B2']['dies'], 0, 10);
-        $groups['B2']['count'] = count($groups['B2']['dies']);
 
         return $groups;
     }
