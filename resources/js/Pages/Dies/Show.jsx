@@ -205,6 +205,9 @@ export default function DieShow({ auth, die }) {
         }
     };
 
+    // Jika accumulation_stroke masih 0, tampilkan last_stroke sebagai gantinya
+    const displayStroke = die.accumulation_stroke || die.last_stroke || 0;
+
     return (
         <AppLayout
             user={auth.user}
@@ -766,7 +769,7 @@ export default function DieShow({ auth, die }) {
                                 <div>
                                     <p className="text-sm text-gray-500 dark:text-gray-400">Accumulation Stroke</p>
                                     <p className={`text-4xl font-bold ${getStatusColor(die.ppm_status)}`}>
-                                        {die.accumulation_stroke?. toLocaleString()}
+                                        {displayStroke.toLocaleString()}
                                     </p>
                                     <p className="text-sm text-gray-500 dark:text-gray-400">
                                         of {die.standard_stroke?.toLocaleString()} standard
@@ -793,7 +796,7 @@ export default function DieShow({ auth, die }) {
                                 <LotProgress
                                     lots={die.lot_progress || []}
                                     percentage={die. stroke_percentage}
-                                    accumulationStroke={die.accumulation_stroke}
+                                    accumulationStroke={displayStroke}
                                     standardStroke={die.standard_stroke}
                                 />
                             </div>
@@ -862,7 +865,7 @@ export default function DieShow({ auth, die }) {
                                         <div className="flex justify-between text-sm">
                                             <span className="text-gray-600 dark:text-gray-400">Current</span>
                                             <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                                {die.accumulation_stroke?.toLocaleString()} strokes
+                                                {displayStroke.toLocaleString()} strokes
                                             </span>
                                         </div>
                                         <div className="flex justify-between text-sm">
@@ -940,7 +943,7 @@ export default function DieShow({ auth, die }) {
                                         <div className="flex justify-between text-sm">
                                             <span className="text-gray-600 dark:text-gray-400">Current</span>
                                             <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                                {die.accumulation_stroke?.toLocaleString()} strokes
+                                                {displayStroke.toLocaleString()} strokes
                                             </span>
                                         </div>
                                         <div className="flex justify-between text-sm">
@@ -1153,7 +1156,7 @@ export default function DieShow({ auth, die }) {
                                 </div>
                                 <div>
                                     <span className="text-gray-500 dark:text-gray-400">TOTAL STROKE:</span>
-                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{die.accumulation_stroke?.toLocaleString()}</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{displayStroke.toLocaleString()}</span>
                                 </div>
                                 <div>
                                     <span className="text-gray-500 dark:text-gray-400">STANDARD:</span>
@@ -1405,7 +1408,7 @@ export default function DieShow({ auth, die }) {
                                 {/* Current Status Info */}
                                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                                        <strong>⚠️ Note:</strong> Recording PPM will update the stroke checkpoint. Current stroke: <strong>{die.accumulation_stroke?.toLocaleString()}</strong>
+                                        <strong>⚠️ Note:</strong> Recording PPM will update the stroke checkpoint. Current stroke: <strong>{displayStroke.toLocaleString()}</strong>
                                     </p>
                                 </div>
 
