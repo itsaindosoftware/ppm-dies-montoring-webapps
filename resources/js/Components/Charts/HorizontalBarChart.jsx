@@ -44,6 +44,18 @@ export default function HorizontalBarChart({ data, title, icon, showLegend = tru
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
+        animation: {
+            duration: 300,
+            easing: 'easeInOutQuart',
+        },
+        transitions: {
+            active: {
+                animation: {
+                    duration: 200,
+                    easing: 'easeInOutCubic',
+                },
+            },
+        },
         plugins: {
             legend: {
                 display: showLegend,
@@ -65,6 +77,10 @@ export default function HorizontalBarChart({ data, title, icon, showLegend = tru
             tooltip: {
                 mode: 'index',
                 intersect: false,
+                animation: {
+                    duration: 150,
+                    easing: 'easeInOutQuart',
+                },
             },
         },
         scales: {

@@ -232,10 +232,9 @@ class DashboardController extends Controller
     {
         $dies = DieModel::with(['machineModel.tonnageStandard'])
             ->active()
-            ->get()
-            ->sortByDesc(fn($die) => $die->stroke_percentage)
+            ->orderByDesc('accumulation_stroke')
             ->take(10)
-            ->values();
+            ->get();
 
         $labels = [];
         $values = [];
