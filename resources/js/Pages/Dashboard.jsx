@@ -108,7 +108,12 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                                 </div>
                                 <div className="space-y-2">
                                     {group.dies && group.dies.length > 0 ? (
-                                        group.dies.map((die, idx) => (
+                                        group.dies.map((die, idx) => {
+                                            const effStroke = die.accumulation_stroke || die.last_stroke || 0;
+                                            const effPct = die.standard_stroke > 0
+                                                ? Math.min(Math.round(effStroke / die.standard_stroke * 100), 100)
+                                                : die.stroke_percentage;
+                                            return (
                                             <div key={die.id} className="flex items-center justify-between text-sm bg-white dark:bg-gray-700 rounded px-2 py-1.5 shadow-sm">
                                                 <div className="flex items-center gap-2 min-w-0">
                                                     <span className="text-gray-400 text-xs w-4">{idx + 1}.</span>
@@ -128,13 +133,13 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                                                                 die.ppm_status === 'red' ? 'bg-red-500' :
                                                                 die.ppm_status === 'orange' ? 'bg-orange-500' : 'bg-green-500'
                                                             }`}
-                                                            style={{ width: `${Math.min(die.stroke_percentage, 100)}%` }}
+                                                            style={{ width: `${effPct}%` }}
                                                         ></div>
                                                     </div>
-                                                    <span className="text-xs font-medium w-10 text-right">{die.stroke_percentage}%</span>
+                                                    <span className="text-xs font-medium w-10 text-right">{effPct}%</span>
                                                 </div>
                                             </div>
-                                        ))
+                                        );})
                                     ) : (
                                         <p className="text-sm text-gray-400 text-center py-4">No dies in this group</p>
                                     )}

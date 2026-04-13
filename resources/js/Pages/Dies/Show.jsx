@@ -207,6 +207,36 @@ export default function DieShow({ auth, die }) {
 
     // Jika accumulation_stroke masih 0, tampilkan last_stroke sebagai gantinya
     const displayStroke = die.accumulation_stroke || die.last_stroke || 0;
+    const displayPercentage = die.standard_stroke > 0
+        ? Number(((displayStroke / die.standard_stroke) * 100).toFixed(1))
+        : 0;
+    const displayRemainingStrokes = Math.max(0, (die.standard_stroke || 0) - displayStroke);
+    const displayRemainingLots = die.lot_size > 0
+        ? Number((displayRemainingStrokes / die.lot_size).toFixed(1))
+        : 0;
+    const displayCurrentLot = die.lot_size > 0
+        ? Math.min(Math.floor(displayStroke / die.lot_size) + 1, die.total_lots || 0)
+        : 0;
+    const displayLotProgress = Array.from({ length: die.total_lots || 0 }, (_, index) => {
+        const lot = index + 1;
+        const lotStrokeStart = index * (die.lot_size || 0);
+        const lotStrokeEnd = Math.min(lot * (die.lot_size || 0), die.standard_stroke || 0);
+        const isLastLot = lot === die.total_lots;
+        const isSecondLastLot = lot === (die.total_lots - 1);
+        const zone = isLastLot ? 'red' : (isSecondLastLot ? 'orange' : 'green');
+        const completed = displayStroke >= lotStrokeEnd;
+        const current = !completed && displayStroke >= lotStrokeStart;
+
+        return {
+            lot,
+            zone,
+            status: zone,
+            completed,
+            current,
+            stroke_start: lotStrokeStart,
+            stroke_end: lotStrokeEnd,
+        };
+    });
 
     return (
         <AppLayout
@@ -783,7 +813,7 @@ export default function DieShow({ auth, die }) {
                                 <div className="text-right">
                                     <StatusBadge status={die.ppm_status} label={die.ppm_status_label} />
                                     <p className={`text-3xl font-bold mt-2 ${getStatusColor(die.ppm_status)}`}>
-                                        {die. stroke_percentage}%
+                                        {displayPercentage}%
                                     </p>
                                 </div>
                             </div>
@@ -791,11 +821,11 @@ export default function DieShow({ auth, die }) {
                             {/* Lot Progress */}
                             <div className="mb-6">
                                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Lot Progress (Current:  Lot {die.current_lot} of {die.total_lots})
+                                    Lot Progress (Current:  Lot {displayCurrentLot} of {die.total_lots})
                                 </p>
                                 <LotProgress
-                                    lots={die.lot_progress || []}
-                                    percentage={die. stroke_percentage}
+                                    lots={displayLotProgress}
+                                    percentage={displayPercentage}
                                     accumulationStroke={displayStroke}
                                     standardStroke={die.standard_stroke}
                                 />
@@ -805,19 +835,19 @@ export default function DieShow({ auth, die }) {
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                                        {die.remaining_strokes?. toLocaleString()}
+                                        {displayRemainingStrokes.toLocaleString()}
                                     </p>
                                     <p className="text-xs text-gray-500 dark: text-gray-400">Remaining Strokes</p>
                                 </div>
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                                        {die.remaining_lots?.toFixed(1)}
+                                        {displayRemainingLots.toFixed(1)}
                                     </p>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">Remaining Lots</p>
                                 </div>
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                                        {die.current_lot}/{die.total_lots}
+                                        {displayCurrentLot}/{die.total_lots}
                                     </p>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">Current Lot</p>
                                 </div>
