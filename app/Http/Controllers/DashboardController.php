@@ -143,8 +143,8 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort A1 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['A1']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
+        // Sort A1 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
+        usort($groups['A1']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
         $groups['A1']['dies'] = array_slice($groups['A1']['dies'], 0, 10);
         $groups['A1']['count'] = count($groups['A1']['dies']);
 
@@ -169,8 +169,8 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort A2 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['A2']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
+        // Sort A2 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
+        usort($groups['A2']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
         $groups['A2']['dies'] = array_slice($groups['A2']['dies'], 0, 10);
         $groups['A2']['count'] = count($groups['A2']['dies']);
 
@@ -195,8 +195,8 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort B1 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['B1']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
+        // Sort B1 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
+        usort($groups['B1']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
         $groups['B1']['dies'] = array_slice($groups['B1']['dies'], 0, 10);
         $groups['B1']['count'] = count($groups['B1']['dies']);
 
@@ -221,8 +221,8 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort B2 by accumulation_stroke descending (terbesar ke terkecil)
-        usort($groups['B2']['dies'], fn($a, $b) => $b['accumulation_stroke'] <=> $a['accumulation_stroke']);
+        // Sort B2 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
+        usort($groups['B2']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
         $groups['B2']['dies'] = array_slice($groups['B2']['dies'], 0, 10);
         $groups['B2']['count'] = count($groups['B2']['dies']);
 
