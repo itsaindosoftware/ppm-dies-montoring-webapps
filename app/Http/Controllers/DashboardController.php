@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DieModel;
-use App\Models\ProductionLog;
+// use App\Models\ProductionLog;
 use App\Models\PpmHistory;
 use App\Models\Customer;
 use App\Models\SpecialDiesRepair;
@@ -14,7 +14,7 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-     protected DieMonitoringService $monitoringService;
+    protected DieMonitoringService $monitoringService;
 
     public function __construct(DieMonitoringService $monitoringService)
     {
@@ -111,6 +111,7 @@ class DashboardController extends Controller
      * TOP 10 dies by stroke progress, grouped by A1, A2, B1, B2
      * Groups are based on lot position in the 4-lot PPM cycle:
      * A1 = Lot 1 (0-25%), A2 = Lot 2 (25-50%), B1 = Lot 3 (50-75% / Orange), B2 = Lot 4 (75-100% / Red)
+     * top 10 dies berdasarkan mesin
      */
     protected function getTopDiesByGroupData(): array
     {
@@ -203,9 +204,9 @@ class DashboardController extends Controller
         $year = now()->year;
 
         $ppmCounts = PpmHistory::select(
-                DB::raw('MONTH(ppm_date) as month'),
-                DB::raw('COUNT(*) as count')
-            )
+            DB::raw('MONTH(ppm_date) as month'),
+            DB::raw('COUNT(*) as count')
+        )
             ->whereYear('ppm_date', $year)
             ->groupBy('month')
             ->orderBy('month')
@@ -258,9 +259,14 @@ class DashboardController extends Controller
             ->active()
             ->whereNotNull('ppm_alert_status')
             ->whereIn('ppm_alert_status', [
-                'red_alerted', 'transferred_to_mtn', 'ppm_scheduled',
-                'schedule_approved', 'ppm_in_progress', 'additional_repair',
-                'ppm_completed', 'special_repair',
+                'red_alerted',
+                'transferred_to_mtn',
+                'ppm_scheduled',
+                'schedule_approved',
+                'ppm_in_progress',
+                'additional_repair',
+                'ppm_completed',
+                'special_repair',
             ])
             ->get();
 

@@ -44,22 +44,8 @@ class ProductionLogController extends Controller
     {
         $dies = DieModel::with(['customer:id,code', 'machineModel:id,code', 'machineModel.tonnageStandard'])
             ->active()
-            ->get([
-                'id',
-                'part_number',
-                'part_name',
-                'customer_id',
-                'machine_model_id',
-                'line',
-                'qty_die',
-                'model',
-                'accumulation_stroke',
-                'lot_size',
-                'ppm_standard',
-                'control_stroke',
-                'stroke_at_last_ppm',
-                'ppm_count'
-            ]);
+            ->get(['id', 'part_number', 'part_name', 'customer_id', 'machine_model_id', 'line', 'qty_die', 'model',
+                    'accumulation_stroke', 'lot_size', 'ppm_standard', 'control_stroke', 'stroke_at_last_ppm', 'ppm_count']);
 
         $dies->each->append(['next_ppm_stroke', 'ppm_status', 'lot_size_value', 'standard_stroke']);
 
@@ -123,21 +109,8 @@ class ProductionLogController extends Controller
 
         $dies = DieModel::with(['customer:id,code', 'machineModel:id,code', 'machineModel.tonnageStandard'])
             ->active()
-            ->get([
-                'id',
-                'part_number',
-                'part_name',
-                'customer_id',
-                'machine_model_id',
-                'line',
-                'qty_die',
-                'accumulation_stroke',
-                'lot_size',
-                'ppm_standard',
-                'control_stroke',
-                'stroke_at_last_ppm',
-                'ppm_count'
-            ]);
+            ->get(['id', 'part_number', 'part_name', 'customer_id', 'machine_model_id', 'line', 'qty_die',
+                    'accumulation_stroke', 'lot_size', 'ppm_standard', 'control_stroke', 'stroke_at_last_ppm', 'ppm_count']);
 
         $dies->each->append(['next_ppm_stroke', 'ppm_status', 'lot_size_value', 'standard_stroke']);
 
@@ -220,7 +193,7 @@ class ProductionLogController extends Controller
             return null;
         }
 
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return $value;
         }
 
