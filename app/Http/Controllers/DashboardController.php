@@ -143,8 +143,12 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort A1 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
-        usort($groups['A1']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
+        // Sort A1 by current stroke (accumulation_stroke or last_stroke fallback) descending
+        usort(
+            $groups['A1']['dies'],
+            fn($a, $b) =>
+            ($b['accumulation_stroke'] ?: $b['last_stroke'] ?: 0) <=> ($a['accumulation_stroke'] ?: $a['last_stroke'] ?: 0)
+        );
         $groups['A1']['dies'] = array_slice($groups['A1']['dies'], 0, 10);
         $groups['A1']['count'] = count($groups['A1']['dies']);
 
@@ -169,8 +173,12 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort A2 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
-        usort($groups['A2']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
+        // Sort A2 by current stroke (accumulation_stroke or last_stroke fallback) descending
+        usort(
+            $groups['A2']['dies'],
+            fn($a, $b) =>
+            ($b['accumulation_stroke'] ?: $b['last_stroke'] ?: 0) <=> ($a['accumulation_stroke'] ?: $a['last_stroke'] ?: 0)
+        );
         $groups['A2']['dies'] = array_slice($groups['A2']['dies'], 0, 10);
         $groups['A2']['count'] = count($groups['A2']['dies']);
 
@@ -195,8 +203,12 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort B1 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
-        usort($groups['B1']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
+        // Sort B1 by current stroke (accumulation_stroke or last_stroke fallback) descending
+        usort(
+            $groups['B1']['dies'],
+            fn($a, $b) =>
+            ($b['accumulation_stroke'] ?: $b['last_stroke'] ?: 0) <=> ($a['accumulation_stroke'] ?: $a['last_stroke'] ?: 0)
+        );
         $groups['B1']['dies'] = array_slice($groups['B1']['dies'], 0, 10);
         $groups['B1']['count'] = count($groups['B1']['dies']);
 
@@ -221,8 +233,12 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort B2 by (accumulation_stroke + last_stroke) descending (terbesar ke terkecil)
-        usort($groups['B2']['dies'], fn($a, $b) => ($b['accumulation_stroke'] + $b['last_stroke']) <=> ($a['accumulation_stroke'] + $a['last_stroke']));
+        // Sort B2 by current stroke (accumulation_stroke or last_stroke fallback) descending
+        usort(
+            $groups['B2']['dies'],
+            fn($a, $b) =>
+            ($b['accumulation_stroke'] ?: $b['last_stroke'] ?: 0) <=> ($a['accumulation_stroke'] ?: $a['last_stroke'] ?: 0)
+        );
         $groups['B2']['dies'] = array_slice($groups['B2']['dies'], 0, 10);
         $groups['B2']['count'] = count($groups['B2']['dies']);
 
@@ -236,17 +252,23 @@ class DashboardController extends Controller
     {
         $dies = DieModel::with(['machineModel.tonnageStandard'])
             ->active()
-            ->orderByDesc('accumulation_stroke')
-            ->take(10)
             ->get();
+
+        // Sort by current stroke (accumulation_stroke or last_stroke fallback) descending
+        $dies = $dies->sortByDesc(function ($die) {
+            return $die->accumulation_stroke ?: $die->last_stroke ?: 0;
+        })->take(10);
 
         $labels = [];
         $values = [];
         $maxValues = [];
 
         foreach ($dies as $die) {
+            // Use fallback logic: accumulation_stroke or last_stroke
+            $currentStroke = $die->accumulation_stroke ?: $die->last_stroke ?: 0;
+
             $labels[] = $die->part_number;
-            $values[] = $die->accumulation_stroke;
+            $values[] = $currentStroke;
             $maxValues[] = $die->standard_stroke;
         }
 
