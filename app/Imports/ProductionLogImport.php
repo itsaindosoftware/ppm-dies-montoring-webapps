@@ -18,8 +18,6 @@ use Maatwebsite\Excel\Concerns\SkipsOnError;
 use Maatwebsite\Excel\Concerns\SkipsErrors;
 use Maatwebsite\Excel\Concerns\SkipsOnFailure;
 use Maatwebsite\Excel\Concerns\SkipsFailures;
-use Maatwebsite\Excel\Validators\Failure;
-use Illuminate\Support\Facades\Log;
 
 class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, WithCalculatedFormulas, SkipsEmptyRows, SkipsOnError, SkipsOnFailure
 {
@@ -40,6 +38,8 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
 
         // Flexible key lookup for part_number
         $partNumber = $this->cleanValue($row['part_number'] ?? $row['part_no'] ?? $row['partnumber'] ?? null);
+        $rowPartName = $this->cleanValue($row['part_name'] ?? null);
+        $rowModel = $this->cleanValue($row['model'] ?? null);
 
         // Skip if no part number
         if (empty($partNumber)) {
@@ -123,24 +123,7 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             if ($matchedByBase) {
                 $existingLog->increment('output_qty', $outputQty);
 
-                // Update accumulation_stroke for ALL variant dies with same base part number
-                $basePartNumber = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $die->part_number));
-
-                $variantDies = DieModel::where(function ($query) use ($basePartNumber, $die) {
-                    $query->where('part_number', $basePartNumber)
-                        ->orWhere('part_number', 'LIKE', $basePartNumber . ' (%');
-                })
-                    ->where('customer_id', $die->customer_id)
-                    ->where('model', $die->model)
-                    ->get();
-
-                foreach ($variantDies as $variantDie) {
-                    $previousStatus = $variantDie->ppm_status;
-                    $variantDie->increment('accumulation_stroke', $outputQty);
-                    $variantDie->refresh();
-                    $variantDie->load(['machineModel.tonnageStandard', 'customer']);
-                    $this->checkAndSendAlert($variantDie, $previousStatus, $variantDie->ppm_status);
-                }
+                $strokeSync = $this->syncGroupedStrokes($die, $partNumber, $rowPartName, $rowModel, $outputQty);
 
                 $this->accumulatedCount++;
                 $this->accumulatedRows[] = [
@@ -152,7 +135,7 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
                     'output' => $outputQty,
                     'accumulated_to' => $die->part_number,
                     'new_total' => $existingLog->output_qty,
-                    'reason' => "Diakumulasi ke part {$die->part_number} (total: {$existingLog->output_qty})",
+                    'reason' => "Diakumulasi ke part {$die->part_number} (total log: {$existingLog->output_qty}, stroke: {$strokeSync['new_stroke']}, grouped dies: {$strokeSync['grouped_count']})",
                 ];
 
                 return null;
@@ -166,7 +149,7 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
                 'output' => $outputQty,
                 // You cannot double input on the same date (pesan erornya revisi dari pak didin)
                 // 'reason' => "Data sudah ada di database (tanggal: {$existingLog->production_date->format('d-M-Y')}, shift: {$existingLog->shift}, output existing: {$existingLog->output_qty})",
-                'reason' => "You cannot double input on the same date (date: {$existingLog->production_date->format('d-M-Y')})",
+                'reason' => 'You cannot double input on the same date (date: ' . Carbon::parse($existingLog->production_date)->format('d-M-Y') . ')',
             ];
             return null;
         }
@@ -180,27 +163,7 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             }
         }
 
-        // Update die accumulation stroke for ALL variant dies with same base part number
-        // This ensures all variants (AC), (CC), (A), (R), (L), (C) etc. show the same lot progress
-        $basePartNumber = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $die->part_number));
-
-        // Find all dies that match the base part number (with or without suffix)
-        $variantDies = DieModel::where(function ($query) use ($basePartNumber, $die) {
-            $query->where('part_number', $basePartNumber)
-                ->orWhere('part_number', 'LIKE', $basePartNumber . ' (%');
-        })
-            ->where('customer_id', $die->customer_id)
-            ->where('model', $die->model)
-            ->get();
-
-        // Update accumulation_stroke for all variant dies
-        foreach ($variantDies as $variantDie) {
-            $previousStatus = $variantDie->ppm_status;
-            $variantDie->increment('accumulation_stroke', $outputQty);
-            $variantDie->refresh();
-            $variantDie->load(['machineModel.tonnageStandard', 'customer']);
-            $this->checkAndSendAlert($variantDie, $previousStatus, $variantDie->ppm_status);
-        }
+        $strokeSync = $this->syncGroupedStrokes($die, $partNumber, $rowPartName, $rowModel, $outputQty);
 
         $this->importedCount++;
 
@@ -212,6 +175,8 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             'shift' => $shift,
             'line' => $line,
             'output' => $outputQty,
+            'grouped_dies' => $strokeSync['grouped_count'],
+            'new_stroke' => $strokeSync['new_stroke'],
         ];
 
         return new ProductionLog([
@@ -328,6 +293,76 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         }
 
         return null;
+    }
+
+    /**
+     * Sync grouped die stroke values based on prefix + part_name + model.
+     * Only accumulation_stroke is updated from production output import.
+     */
+    protected function syncGroupedStrokes(DieModel $seedDie, string $partNumber, ?string $partName, ?string $model, int $outputQty): array
+    {
+        $prefix = $this->extractPartPrefix($partNumber);
+        $normalizedPartName = strtolower(trim((string) ($partName ?: $seedDie->part_name)));
+        $normalizedModel = strtolower(trim((string) ($model ?: $seedDie->model)));
+
+        $baseQuery = DieModel::whereRaw('LEFT(TRIM(part_number), ?) = ?', [strlen($prefix), $prefix])
+            ->whereRaw('LOWER(TRIM(part_name)) = ?', [$normalizedPartName])
+            ->where('customer_id', $seedDie->customer_id);
+
+        $groupedDies = (clone $baseQuery)
+            ->where(function ($query) use ($normalizedModel) {
+                $query->whereRaw('LOWER(TRIM(COALESCE(model, ""))) = ?', [$normalizedModel])
+                    ->orWhereRaw('LOWER(TRIM(COALESCE(dies_size, ""))) = ?', [$normalizedModel])
+                    ->orWhereHas('machineModel', function ($machineQuery) use ($normalizedModel) {
+                        $machineQuery->whereRaw('LOWER(TRIM(COALESCE(code, ""))) = ?', [$normalizedModel])
+                            ->orWhereRaw('LOWER(TRIM(COALESCE(name, ""))) = ?', [$normalizedModel]);
+                    });
+            })
+            ->get();
+
+        // Fallback: if model mapping differs between Excel and dies master,
+        // still group by prefix + part name + customer.
+        if ($groupedDies->isEmpty()) {
+            $groupedDies = (clone $baseQuery)->get();
+        }
+
+        if ($groupedDies->isEmpty()) {
+            $groupedDies = collect([$seedDie]);
+        }
+
+        $currentStroke = (int) $groupedDies->max(function ($die) {
+            return (int) ($die->accumulation_stroke ?? 0);
+        });
+
+        $newStroke = $currentStroke + $outputQty;
+
+        foreach ($groupedDies as $groupedDie) {
+            $previousStatus = $groupedDie->ppm_status;
+
+            // Import production output only contributes to accumulation_stroke.
+            $groupedDie->update([
+                'accumulation_stroke' => $newStroke,
+            ]);
+
+            $groupedDie->refresh();
+            $groupedDie->load(['machineModel.tonnageStandard', 'customer']);
+            $this->checkAndSendAlert($groupedDie, $previousStatus, $groupedDie->ppm_status);
+        }
+
+        return [
+            'grouped_count' => $groupedDies->count(),
+            'new_stroke' => $newStroke,
+        ];
+    }
+
+    protected function extractPartPrefix(string $partNumber): string
+    {
+        $trimmed = trim($partNumber);
+        if ($trimmed === '') {
+            return '';
+        }
+
+        return substr($trimmed, 0, 5);
     }
 
     public function getImportedCount(): int

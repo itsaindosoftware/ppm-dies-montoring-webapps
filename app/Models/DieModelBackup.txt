@@ -34,6 +34,7 @@ class DieModel extends Model
         'machine_model_id',
         'customer_id',
         'qty_die',
+        'dies_size',          // Dies size (A1, A2, B1, B2, etc.)
         'line',
         'process_type',       // Process type for PPM checklist (blank_pierce, draw, etc)
         'lot_size',           // Lot size per batch (600, 5000)
