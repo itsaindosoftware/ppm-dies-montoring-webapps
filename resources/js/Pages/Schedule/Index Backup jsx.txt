@@ -335,13 +335,13 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                     </div>
 
                     {/* Scrollable Table Container */}
-                    <div className="overflow-x-auto overflow-y-auto max-h-[70vh]" ref={tableRef}>
+                    <div className="overflow-x-auto" ref={tableRef}>
                         <table className="min-w-full border-collapse text-xs">
                             {/* Header Row 1 - Month Names */}
-                            <thead className="sticky top-0 z-30">
+                            <thead>
                                 <tr className="bg-green-600 text-white">
-                                    <th className="border border-green-500 px-2 py-2 text-center sticky left-0 bg-green-600 z-40 min-w-[40px]" rowSpan={2}>NO</th>
-                                    <th className="border border-green-500 px-2 py-2 text-left sticky left-[40px] bg-green-600 z-40 min-w-[180px]" rowSpan={2}>NAME/PART<br/>NUMBER DIE</th>
+                                    <th className="border border-green-500 px-2 py-2 text-center sticky left-0 bg-green-600 z-20 min-w-[40px]" rowSpan={2}>NO</th>
+                                    <th className="border border-green-500 px-2 py-2 text-left sticky left-[40px] bg-green-600 z-20 min-w-[180px]" rowSpan={2}>NAME/PART<br/>NUMBER DIE</th>
                                     <th className="border border-green-500 px-2 py-2 text-center min-w-[50px]" rowSpan={2}>MODEL</th>
                                     <th className="border border-green-500 px-2 py-2 text-center min-w-[45px]" rowSpan={2}>TOTAL<br/>DIE</th>
                                     <th className="border border-green-500 px-2 py-2 text-center min-w-[100px]" rowSpan={2}>ACCUMULATION</th>

@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\MachineModel;
 use App\Services\DieMonitoringService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class DieController extends Controller
@@ -42,9 +43,10 @@ class DieController extends Controller
                 'model' => $die->machineModel?->code,
                 'tonnage' => $die->machineModel?->tonnageStandard?->tonnage,
                 'qty_die' => $die->qty_die,
+                'dies_size' => $die->dies_size,
                 'line' => $die->line,
                 'process_type' => $die->process_type,
-                'accumulation_stroke' => $die->accumulation_stroke,
+                'accumulation_stroke' => $die->combined_stroke,
                 'standard_stroke' => $die->standard_stroke,
                 'ppm_standard' => $die->ppm_standard,
                 'remaining_strokes' => $die->remaining_strokes,
@@ -105,11 +107,35 @@ class DieController extends Controller
      */
     public function create()
     {
+        // Collect distinct die groups from existing records
+        $existingGroups = DieModel::whereNotNull('die_group')
+            ->where('die_group', '!=', '')
+            ->distinct()
+            ->orderBy('die_group')
+            ->pluck('die_group')
+            ->toArray();
+
+        // Also derive groups from part_number prefixes (first 5 chars)
+        $partPrefixes = DieModel::whereNotNull('part_number')
+            ->where('part_number', '!=', '')
+            ->pluck('part_number')
+            ->map(fn($p) => substr($p, 0, 5))
+            ->unique()
+            ->sort()
+            ->values()
+            ->toArray();
+
+        $dieGroups = collect(array_merge($existingGroups, $partPrefixes))
+            ->unique()
+            ->sort()
+            ->values();
+
         return Inertia::render('Dies/Create', [
             'customers' => Customer::active()->get(['id', 'code', 'name']),
             'machineModels' => MachineModel::with('tonnageStandard')
                 ->active()
                 ->get(),
+            'dieGroups' => $dieGroups,
         ]);
     }
 
@@ -214,7 +240,7 @@ class DieController extends Controller
                 'qty_die' => $die->qty_die,
                 'line' => $die->line,
                 'process_type' => $die->process_type,
-                'accumulation_stroke' => $die->accumulation_stroke,
+                'accumulation_stroke' => $die->combined_stroke,
                 'last_stroke' => $die->last_stroke,
                 'standard_stroke' => $die->standard_stroke,
                 'remaining_strokes' => $die->remaining_strokes,
@@ -289,6 +315,30 @@ class DieController extends Controller
     public function edit(DieModel $die)
     {
         // dd($die);
+
+        // Collect distinct die groups from existing records
+        $existingGroups = DieModel::whereNotNull('die_group')
+            ->where('die_group', '!=', '')
+            ->distinct()
+            ->orderBy('die_group')
+            ->pluck('die_group')
+            ->toArray();
+
+        // Also derive groups from part_number prefixes (first 5 chars)
+        $partPrefixes = DieModel::whereNotNull('part_number')
+            ->where('part_number', '!=', '')
+            ->pluck('part_number')
+            ->map(fn($p) => substr($p, 0, 5))
+            ->unique()
+            ->sort()
+            ->values()
+            ->toArray();
+
+        $dieGroups = collect(array_merge($existingGroups, $partPrefixes))
+            ->unique()
+            ->sort()
+            ->values();
+
         return Inertia::render('Dies/Edit', [
             'die' => $die,
             'customers' => Customer::active()->get(['id', 'code', 'name']),
@@ -297,6 +347,7 @@ class DieController extends Controller
             ])
                 ->active()
                 ->get(['id', 'code', 'name', 'tonnage_standard_id']),
+            'dieGroups' => $dieGroups,
         ]);
     }
 
@@ -311,6 +362,7 @@ class DieController extends Controller
             'machine_model_id' => 'required|exists:machine_models,id',
             'customer_id' => 'required|exists:customers,id',
             'qty_die' => 'required|integer|min:1',
+            'dies_size' => 'nullable|string|max:20',
             'line' => 'nullable|string|max:20',
             'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
             'control_stroke' => 'nullable|integer|min:0',
@@ -319,9 +371,38 @@ class DieController extends Controller
             'location' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
             'is_4lot_check' => 'boolean',
+            'die_group' => 'nullable|string|max:20',
         ]);
 
-        $die->update($validated);
+        // When die_group is provided, treat input last_stroke as increment value.
+        // Resulting accumulated value is synchronized to all dies in the same group key.
+        $inputStroke = (int) ($validated['last_stroke'] ?? 0);
+        $newDieGroup = trim((string) ($validated['die_group'] ?? ''));
+
+        if ($newDieGroup !== '') {
+            DB::transaction(function () use ($die, $validated, $inputStroke, $newDieGroup) {
+                $groupLength = strlen($newDieGroup);
+                $currentStroke = (int) ($die->last_stroke ?? 0);
+                $accumulatedStroke = $currentStroke + $inputStroke;
+
+                $updatePayload = $validated;
+                $updatePayload['last_stroke'] = $accumulatedStroke;
+                $die->update($updatePayload);
+
+                DieModel::where('id', '!=', $die->id)
+                    ->where(function ($query) use ($newDieGroup, $groupLength) {
+                        $query->where('die_group', $newDieGroup)
+                            ->orWhereRaw('LEFT(TRIM(part_number), ?) = ?', [$groupLength, $newDieGroup]);
+                    })
+                    ->update([
+                        'die_group' => $newDieGroup,
+                        'last_stroke' => $accumulatedStroke,
+                    ]);
+            });
+        } else {
+            // Without die_group, keep regular direct update only for edited die.
+            $die->update($validated);
+        }
 
         return redirect()->route('dies.index')
             ->with('success', 'Die updated successfully.');

@@ -34,6 +34,7 @@ class DieModel extends Model
         'machine_model_id',
         'customer_id',
         'qty_die',
+        'dies_size',          // Dies size (A1, A2, B1, B2, etc.)
         'line',
         'process_type',       // Process type for PPM checklist (blank_pierce, draw, etc)
         'lot_size',           // Lot size per batch (600, 5000)
@@ -188,13 +189,22 @@ class DieModel extends Model
     }
 
     /**
+     * Combined stroke used for monitoring dashboard.
+     * Formula: accumulation_stroke (existing cumulative base) + last_stroke (latest input).
+     */
+    public function getCombinedStrokeAttribute(): int
+    {
+        return (int) ($this->attributes['accumulation_stroke'] ?? 0)
+            + (int) ($this->attributes['last_stroke'] ?? 0);
+    }
+
+    /**
      * Get remaining strokes until NEXT PPM checkpoint
      * Based on "every 4 lots" rule
      */
     public function getRemainingStrokesAttribute()
     {
-        // Fallback to last_stroke if accumulation_stroke is 0
-        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        $currentStroke = $this->combined_stroke;
         return max(0, $this->standard_stroke - $currentStroke);
     }
 
@@ -207,8 +217,7 @@ class DieModel extends Model
         if ($standardStroke <= 0)
             return 100;
 
-        // Fallback to last_stroke if accumulation_stroke is 0
-        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        $currentStroke = $this->combined_stroke;
         return round(($currentStroke / $standardStroke) * 100, 1);
     }
 
@@ -232,8 +241,7 @@ class DieModel extends Model
         if ($lotSize <= 0)
             return 0;
 
-        // Fallback to last_stroke if accumulation_stroke is 0
-        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        $currentStroke = $this->combined_stroke;
         return (int) floor($currentStroke / $lotSize) + 1;
     }
 
@@ -316,8 +324,7 @@ class DieModel extends Model
         if ($lotSize <= 0 || $standardStroke <= 0)
             return 'green';
 
-        // Fallback to last_stroke if accumulation_stroke is 0
-        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        $currentStroke = $this->combined_stroke;
 
         // Orange threshold = standard_stroke - lot_size
         $orangeThreshold = $standardStroke - $lotSize;
@@ -400,8 +407,7 @@ class DieModel extends Model
     {
         $lotSize = $this->lot_size_value;
         $standardStroke = $this->standard_stroke;
-        // Fallback to last_stroke if accumulation_stroke is 0 (same as frontend logic)
-        $accumulation = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        $accumulation = $this->combined_stroke;
         $ppmCount = $this->ppm_count ?? 0;
 
         // Kondisi 1: Target Standard Stroke (Red / PPM Required)
@@ -453,8 +459,7 @@ class DieModel extends Model
         $totalLots = $this->total_lots;
         $lotSize = $this->lot_size_value;
         $standardStroke = $this->standard_stroke;
-        // Fallback to last_stroke if accumulation_stroke is 0 (same as frontend logic)
-        $accumulationStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        $accumulationStroke = $this->combined_stroke;
 
         if ($totalLots <= 0) {
             return $lots;
