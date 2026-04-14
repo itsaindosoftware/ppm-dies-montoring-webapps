@@ -29,22 +29,6 @@ class ScheduleController extends Controller
         $year = $request->get('year', now()->year);
         $customerId = $request->get('customer_id');
         $tonnageId = $request->get('tonnage_id');
-        $month = $request->get('month');
-        $date = $request->get('date');
-
-        $month = is_numeric($month) ? (int) $month : null;
-        if ($month !== null && ($month < 1 || $month > 12)) {
-            $month = null;
-        }
-
-        $selectedDate = null;
-        if (!empty($date)) {
-            try {
-                $selectedDate = Carbon::parse($date)->toDateString();
-            } catch (\Throwable $e) {
-                $selectedDate = null;
-            }
-        }
 
         // Get filters data
         $customers = Customer::active()->get(['id', 'code', 'name']);
@@ -54,28 +38,8 @@ class ScheduleController extends Controller
         $query = DieModel::with([
             'machineModel.tonnageStandard',
             'customer',
-            'ppmSchedules' => function ($q) use ($year, $month, $selectedDate) {
-                $q->where('year', $year);
-
-                if ($month) {
-                    $q->where('month', $month);
-                }
-
-                if ($selectedDate) {
-                    $q->whereDate('ppm_date', $selectedDate);
-                }
-            },
-            'ppmHistories' => function ($q) use ($year, $month, $selectedDate) {
-                $q->whereYear('ppm_date', $year);
-
-                if ($month) {
-                    $q->whereMonth('ppm_date', $month);
-                }
-
-                if ($selectedDate) {
-                    $q->whereDate('ppm_date', $selectedDate);
-                }
-            },
+            'ppmSchedules' => fn($q) => $q->where('year', $year),
+            'ppmHistories' => fn($q) => $q->whereYear('ppm_date', $year),
         ])->active();
 
         if ($customerId) {
@@ -85,32 +49,6 @@ class ScheduleController extends Controller
         if ($tonnageId) {
             $query->whereHas('machineModel', function ($q) use ($tonnageId) {
                 $q->where('tonnage_standard_id', $tonnageId);
-            });
-        }
-
-        if ($month || $selectedDate) {
-            $query->where(function ($q) use ($year, $month, $selectedDate) {
-                $q->whereHas('ppmSchedules', function ($scheduleQuery) use ($year, $month, $selectedDate) {
-                    $scheduleQuery->where('year', $year);
-
-                    if ($month) {
-                        $scheduleQuery->where('month', $month);
-                    }
-
-                    if ($selectedDate) {
-                        $scheduleQuery->whereDate('ppm_date', $selectedDate);
-                    }
-                })->orWhereHas('ppmHistories', function ($historyQuery) use ($year, $month, $selectedDate) {
-                    $historyQuery->whereYear('ppm_date', $year);
-
-                    if ($month) {
-                        $historyQuery->whereMonth('ppm_date', $month);
-                    }
-
-                    if ($selectedDate) {
-                        $historyQuery->whereDate('ppm_date', $selectedDate);
-                    }
-                });
             });
         }
 
@@ -127,8 +65,6 @@ class ScheduleController extends Controller
             'filters' => [
                 'customer_id' => $customerId,
                 'tonnage_id' => $tonnageId,
-                'month' => $month,
-                'date' => $selectedDate,
             ],
         ]);
     }
@@ -204,7 +140,7 @@ class ScheduleController extends Controller
                 'total_die' => $die->qty_die,
                 'accumulation_stroke' => $die->accumulation_stroke,
                 'last_stroke' => $die->last_stroke,
-                'control_stroke' => $die->control_stroke ?? $die->standard_stroke,
+                'control_stroke' => $die->control_stroke ??  $die->standard_stroke,
                 'standard_stroke' => $die->standard_stroke,
                 'stroke_percentage' => $die->stroke_percentage,
                 'ppm_status' => $die->ppm_status,

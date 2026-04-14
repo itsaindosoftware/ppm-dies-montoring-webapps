@@ -428,6 +428,10 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
         });
     };
 
+    // yang dies size sebelumnya berupa data Line
+    // yang kolom baru Line, diisi oleh A1, A2, B1, B2 Line
+    // nanti yang di database, Line yang baru diisi oleh dies size
+
     // Reusable pagination component
     const renderPagination = () => (
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
@@ -797,6 +801,9 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                         Part Name
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Dies Size
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Line
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -862,7 +869,15 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                             </td>
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                                                    {die.line || '-'}
+                                                    {/* {die.dies_size || '-'} */}
+                                                    {/* dies size diisi oleh line yang sebelumnya */}
+                                                      {die.line || '-'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                                    {/* yang kolom line baru diisi oleh dies size (kolom baru) */}
+                                                    {die.dies_size || '-'}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 whitespace-nowrap">
@@ -1075,6 +1090,9 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                         Part Name
                                     </th>
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
+                                        Dies Size
+                                    </th>
+                                    <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                         Line
                                     </th>
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
@@ -1133,8 +1151,13 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                             </span>
                                         </td>
                                         <td className="px-3 py-2 text-center">
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                            <span className="text-sm text-gray-700 dark:text-gray-300">
                                                 {die.line || '-'}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                                {die.dies_size || '-'}
                                             </span>
                                         </td>
                                         <td className="px-3 py-2 text-center text-sm text-gray-700 dark:text-gray-300">

@@ -2,71 +2,77 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { PROCESS_TYPES } from '@/Utils/PpmChecklistData';
 
-export default function DieEdit({ auth, die, customers, machineModels, dieGroups = [] }) {
-    const { data, setData, patch, processing, errors } = useForm({
-        part_number: die.part_number || '',
-        part_name: die.part_name || '',
-        machine_model_id: die. machine_model_id || '',
-        customer_id: die.customer_id || '',
-        qty_die: die.qty_die || 1,
-        dies_size: die.dies_size || '',
-        line: die.line || '',
-        process_type: die.process_type || '',
-        control_stroke: die.control_stroke || '',
-        last_ppm_date: die.last_ppm_date ? new Date(die.last_ppm_date).toISOString().split('T')[0] : '',
-        last_stroke: die.last_stroke ?? '',
-        location: die.location || '',
-        notes: die. notes || '',
-        is_4lot_check: die.is_4lot_check || false,
-        die_group: die.die_group || '',
+export default function DieCreate({ auth, customers, machineModels, dieGroups = [] }) {
+    const { data, setData, post, processing, errors } = useForm({
+        part_number: '',
+        part_name: '',
+        machine_model_id: '',
+        customer_id: '',
+        qty_die: 1,
+        line: '',
+        process_type: '',
+        control_stroke: '',
+        last_ppm_date: '',
+        last_stroke: '',
+        location: '',
+        notes: '',
+        die_group: '',
     });
 
     // Auto-extract base part number (first 5 characters) for grouping
     const extractBasePartNumber = (partNumber) => {
         if (!partNumber) return '';
-        // Extract first 5 characters (e.g., "76453" from "76453-B000P")
         return partNumber.substring(0, 5);
     };
 
     // Update die_group when part_number changes
     const handlePartNumberChange = (e) => {
         const newPartNumber = e.target.value;
-        setData({
-            ...data,
+        setData(prev => ({
+            ...prev,
             part_number: newPartNumber,
             die_group: extractBasePartNumber(newPartNumber),
-        });
+        }));
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        patch(route('dies.update', { die: die.encrypted_id }));
+        post(route('dies.store'));
+    };
+
+    // Auto-suggest line based on model
+    const handleModelChange = (modelId) => {
+        setData('machine_model_id', modelId);
+        const selectedModel = machineModels?.find(m => m.id === parseInt(modelId));
+        if (selectedModel?.tonnage_standard?. tonnage) {
+            setData(prev => ({
+                ...prev,
+                machine_model_id: modelId,
+                line: selectedModel.tonnage_standard.tonnage,
+            }));
+        }
     };
 
     return (
         <AppLayout
-            user={auth.user}
+            user={auth. user}
             header={
                 <div className="flex items-center gap-2">
-                    <Link href={route('dies.index')} className="text-gray-500 hover: text-gray-700">
+                    <Link href={route('dies.index')} className="text-gray-500 hover:text-gray-700">
                         Dies
                     </Link>
                     <span className="text-gray-400">/</span>
-                    <Link href={route('dies.show', die.encrypted_id)} className="text-gray-500 hover:text-gray-700">
-                        {die.part_number}
-                    </Link>
-                    <span className="text-gray-400">/</span>
-                    <span>Edit</span>
+                    <span>Add New</span>
                 </div>
             }
         >
-            <Head title={`Edit Die - ${die.part_number}`} />
+            <Head title="Add New Die" />
 
             <div className="py-6 px-6">
                 <div className="max-w-3xl mx-auto">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 dark: text-gray-100 mb-6">
-                            ✏️ Edit Die:  {die.part_number}
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">
+                            🔧 Add New Die
                         </h3>
 
                         <form onSubmit={handleSubmit} className="space-y-6">
@@ -78,8 +84,9 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                     </label>
                                     <input
                                         type="text"
-                                        value={data.part_number}
+                                        value={data. part_number}
                                         onChange={handlePartNumberChange}
+                                        placeholder="e.g., 71142-I6000"
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                         required
                                     />
@@ -102,13 +109,14 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark: text-gray-300 mb-1">
                                     Part Name *
                                 </label>
                                 <input
                                     type="text"
                                     value={data.part_name}
                                     onChange={(e) => setData('part_name', e.target.value)}
+                                    placeholder="e.g., REINF-FR PILLAR OTR LWR,RH"
                                     className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     required
                                 />
@@ -130,7 +138,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                         <option value="">-- Select Customer --</option>
                                         {customers?.map((c) => (
                                             <option key={c.id} value={c.id}>
-                                                {c. code} - {c.name}
+                                                {c.code} - {c.name}
                                             </option>
                                         ))}
                                     </select>
@@ -142,7 +150,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                     </label>
                                     <select
                                         value={data.machine_model_id}
-                                        onChange={(e) => setData('machine_model_id', e.target.value)}
+                                        onChange={(e) => handleModelChange(e.target.value)}
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                         required
                                     >
@@ -157,69 +165,46 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                 </div>
                             </div>
 
-                            {/* Dies Size & Line */}
+                            {/* Line & Process Type */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Dies Size
+                                        Line
                                     </label>
                                     <input
                                         type="text"
                                         value={data.line}
-                                        onChange={(e) => setData('line', e.target.value)}
-                                        placeholder="e.g., 800T, 1200T, Progressive"
+                                        onChange={(e) => setData('line', e.target. value)}
+                                        placeholder="e.g., 800T, 1200T"
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
-                                    {errors.line && <p className="text-red-500 text-xs mt-1">{errors.line}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Line *
+                                        Process Type
                                     </label>
                                     <select
-                                        value={data.dies_size}
-                                        onChange={(e) => setData('dies_size', e.target.value)}
+                                        value={data.process_type}
+                                        onChange={(e) => setData('process_type', e.target.value)}
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     >
-                                        <option value="">-- Select Line --</option>
-                                        <option value="A1 Line">A1 Line</option>
-                                        <option value="A2 Line">A2 Line</option>
-                                        <option value="B1 Line">B1 Line</option>
-                                        <option value="B2 Line">B2 Line</option>
+                                        <option value="">-- Select Process --</option>
+                                        {PROCESS_TYPES.map((p) => (
+                                            <option key={p.value} value={p.value}>
+                                                {p.label}
+                                            </option>
+                                        ))}
                                     </select>
-                                    {errors.dies_size && <p className="text-red-500 text-xs mt-1">{errors.dies_size}</p>}
+                                    {errors.process_type && <p className="text-red-500 text-xs mt-1">{errors.process_type}</p>}
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Production line location (A1, A2, B1, B2)
+                                        Determines PPM inspection checklist form
                                     </p>
                                 </div>
                             </div>
 
-                            {/* Process Type */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Process Type
-                                </label>
-                                <select
-                                    value={data.process_type}
-                                    onChange={(e) => setData('process_type', e.target.value)}
-                                    className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
-                                >
-                                    <option value="">-- Select Process --</option>
-                                    {PROCESS_TYPES.map((p) => (
-                                        <option key={p.value} value={p.value}>
-                                            {p.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                {errors.process_type && <p className="text-red-500 text-xs mt-1">{errors.process_type}</p>}
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Determines PPM inspection checklist form
-                                </p>
-                            </div>
-
                             {/* Die Group (Grouping) */}
                             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                                <div className="flex items-start gap-3 mb-3">
+                                <div className="flex items-start gap-3">
                                     <div className="flex-shrink-0 mt-0.5">
                                         <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -274,6 +259,9 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                         placeholder="Leave empty to use standard"
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Leave empty to use tonnage standard stroke
+                                    </p>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -288,7 +276,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Jika Die Group diisi, nilai ini dianggap penambahan stroke dan akan diakumulasikan ke semua part dalam group yang sama.
+                                        Stroke count at last PPM check
                                     </p>
                                 </div>
                             </div>
@@ -306,24 +294,10 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Date of latest PPM inspection
+                                        Date of latest PPM inspection (optional)
                                     </p>
                                 </div>
                                 <div></div>
-                            </div>
-
-                            {/* 4-Lot Check */}
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="checkbox"
-                                    id="is_4lot_check"
-                                    checked={data.is_4lot_check}
-                                    onChange={(e) => setData('is_4lot_check', e.target.checked)}
-                                    className="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900"
-                                />
-                                <label htmlFor="is_4lot_check" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    4-Lot Check <span className="text-xs text-gray-500">(Reset accumulation after PPM/polishing)</span>
-                                </label>
                             </div>
 
                             {/* Location */}
@@ -334,7 +308,8 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                 <input
                                     type="text"
                                     value={data.location}
-                                    onChange={(e) => setData('location', e.target.value)}
+                                    onChange={(e) => setData('location', e.target. value)}
+                                    placeholder="e.g., Rack A-12"
                                     className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                 />
                             </div>
@@ -346,36 +321,18 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                 </label>
                                 <textarea
                                     value={data.notes}
-                                    onChange={(e) => setData('notes', e.target.value)}
+                                    onChange={(e) => setData('notes', e. target.value)}
                                     rows="3"
+                                    placeholder="Additional notes..."
                                     className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                 />
                             </div>
 
-                            {/* Current Status Info */}
-                            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Current Status</h4>
-                                <div className="grid grid-cols-3 gap-4 text-sm">
-                                    <div>
-                                        <span className="text-gray-500">Accumulation Stroke:</span>
-                                        <span className="ml-2 font-medium">{die.accumulation_stroke?. toLocaleString() || 0}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-gray-500">Last PPM:</span>
-                                        <span className="ml-2 font-medium">{die.last_ppm_date || 'Never'}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-gray-500">Status:</span>
-                                        <span className="ml-2 font-medium capitalize">{die.status}</span>
-                                    </div>
-                                </div>
-                            </div>
-
                             {/* Actions */}
-                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark: border-gray-700">
                                 <Link
-                                    href={route('dies.show', die.encrypted_id)}
-                                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition dark:bg-gray-700 dark:text-gray-300"
+                                    href={route('dies.index')}
+                                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition dark: bg-gray-700 dark: text-gray-300"
                                 >
                                     Cancel
                                 </Link>
@@ -384,7 +341,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                     disabled={processing}
                                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                                 >
-                                    {processing ? 'Saving.. .' : '💾 Update Die'}
+                                    {processing ? 'Saving...' : '💾 Save Die'}
                                 </button>
                             </div>
                         </form>
