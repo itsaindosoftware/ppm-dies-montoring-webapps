@@ -163,9 +163,12 @@ class DieController extends Controller
         // in the CURRENT cycle. Statuses like orange_alerted, lot_date_set, red_alerted
         // are BEFORE MTN creates a schedule, so old schedule data should NOT be shown.
         $schedulingActiveStatuses = [
-            'ppm_scheduled', 'schedule_approved',
-            'transferred_to_mtn', 'ppm_in_progress',
-            'additional_repair', 'ppm_completed',
+            'ppm_scheduled',
+            'schedule_approved',
+            'transferred_to_mtn',
+            'ppm_in_progress',
+            'additional_repair',
+            'ppm_completed',
         ];
 
         if (in_array($die->ppm_alert_status, $schedulingActiveStatuses)) {
@@ -173,7 +176,7 @@ class DieController extends Controller
             $upcomingSchedule = $die->ppmSchedules()
                 ->where(function ($q) {
                     $q->whereNotNull('plan_week')
-                      ->orWhereNotNull('ppm_date');
+                        ->orWhereNotNull('ppm_date');
                 })
                 ->orderByDesc('year')
                 ->orderByDesc('month')
