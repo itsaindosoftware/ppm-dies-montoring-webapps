@@ -193,7 +193,9 @@ class DieModel extends Model
      */
     public function getRemainingStrokesAttribute()
     {
-        return max(0, $this->standard_stroke - $this->accumulation_stroke);
+        // Fallback to last_stroke if accumulation_stroke is 0
+        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        return max(0, $this->standard_stroke - $currentStroke);
     }
 
     /**
@@ -205,7 +207,9 @@ class DieModel extends Model
         if ($standardStroke <= 0)
             return 100;
 
-        return round(($this->accumulation_stroke / $standardStroke) * 100, 1);
+        // Fallback to last_stroke if accumulation_stroke is 0
+        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        return round(($currentStroke / $standardStroke) * 100, 1);
     }
 
     /**
@@ -228,7 +232,9 @@ class DieModel extends Model
         if ($lotSize <= 0)
             return 0;
 
-        return (int) floor($this->accumulation_stroke / $lotSize) + 1;
+        // Fallback to last_stroke if accumulation_stroke is 0
+        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+        return (int) floor($currentStroke / $lotSize) + 1;
     }
 
     /**
@@ -310,16 +316,19 @@ class DieModel extends Model
         if ($lotSize <= 0 || $standardStroke <= 0)
             return 'green';
 
+        // Fallback to last_stroke if accumulation_stroke is 0
+        $currentStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
+
         // Orange threshold = standard_stroke - lot_size
         $orangeThreshold = $standardStroke - $lotSize;
 
-        // RED: Accumulation has reached or exceeded standard stroke
-        if ($this->accumulation_stroke >= $standardStroke) {
+        // RED: Current stroke has reached or exceeded standard stroke
+        if ($currentStroke >= $standardStroke) {
             return 'red';
         }
 
         // ORANGE: Within 1 lot of standard stroke
-        if ($this->accumulation_stroke >= $orangeThreshold) {
+        if ($currentStroke >= $orangeThreshold) {
             return 'orange';
         }
 
@@ -391,7 +400,8 @@ class DieModel extends Model
     {
         $lotSize = $this->lot_size_value;
         $standardStroke = $this->standard_stroke;
-        $accumulation = $this->accumulation_stroke;
+        // Fallback to last_stroke if accumulation_stroke is 0 (same as frontend logic)
+        $accumulation = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
         $ppmCount = $this->ppm_count ?? 0;
 
         // Kondisi 1: Target Standard Stroke (Red / PPM Required)
@@ -443,7 +453,8 @@ class DieModel extends Model
         $totalLots = $this->total_lots;
         $lotSize = $this->lot_size_value;
         $standardStroke = $this->standard_stroke;
-        $accumulationStroke = $this->accumulation_stroke;
+        // Fallback to last_stroke if accumulation_stroke is 0 (same as frontend logic)
+        $accumulationStroke = $this->accumulation_stroke ?: $this->last_stroke ?: 0;
 
         if ($totalLots <= 0) {
             return $lots;
