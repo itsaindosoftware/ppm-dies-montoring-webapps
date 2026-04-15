@@ -78,7 +78,8 @@ class DieMonitoringService
 
         foreach ($dies as $tonnage => $diesGroup) {
             $total = $diesGroup->count();
-            if ($total === 0) continue;
+            if ($total === 0)
+                continue;
 
             $ok = $diesGroup->filter(fn($d) => $d->ppm_status === 'green')->count();
 
@@ -129,7 +130,7 @@ class DieMonitoringService
             ->active();
 
         // Filter by customer
-        if (! empty($filters['customer_id'])) {
+        if (!empty($filters['customer_id'])) {
             $query->where('customer_id', $filters['customer_id']);
         }
 
@@ -148,7 +149,7 @@ class DieMonitoringService
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('part_number', 'like', "%{$search}%")
-                  ->orWhere('part_name', 'like', "%{$search}%");
+                    ->orWhere('part_name', 'like', "%{$search}%");
             });
         }
 
@@ -175,7 +176,10 @@ class DieMonitoringService
             $slice = $dies->slice(($page - 1) * $perPage, $perPage)->values();
 
             return new \Illuminate\Pagination\LengthAwarePaginator(
-                $slice, $dies->count(), $perPage, $page,
+                $slice,
+                $dies->count(),
+                $perPage,
+                $page,
                 ['path' => request()->url(), 'query' => request()->query()]
             );
         }
@@ -337,7 +341,7 @@ class DieMonitoringService
             $latestSchedule = $die->ppmSchedules()
                 ->where(function ($q) {
                     $q->whereNotNull('plan_week')
-                      ->orWhereNotNull('ppm_date');
+                        ->orWhereNotNull('ppm_date');
                 })
                 ->orderByDesc('year')
                 ->orderByDesc('month')
@@ -604,17 +608,27 @@ class DieMonitoringService
 
         // Statuses that should not be overwritten by a new orange/red alert
         $advancedAlertStatuses = [
-            'orange_alerted', 'lot_date_set', 'ppm_scheduled', 'schedule_approved',
-            'red_alerted', 'transferred_to_mtn', 'ppm_in_progress',
-            'additional_repair', 'ppm_completed',
+            'orange_alerted',
+            'lot_date_set',
+            'ppm_scheduled',
+            'schedule_approved',
+            'red_alerted',
+            'transferred_to_mtn',
+            'ppm_in_progress',
+            'additional_repair',
+            'ppm_completed',
         ];
 
         if ($newStatus === 'orange') {
             // Send Orange Alert to all relevant users
             $recipients = User::where('is_active', true)
                 ->whereIn('role', [
-                    User::ROLE_ADMIN, User::ROLE_MTN_DIES, User::ROLE_MGR_GM,
-                    User::ROLE_MD, User::ROLE_PPIC, User::ROLE_PRODUCTION,
+                    User::ROLE_ADMIN,
+                    User::ROLE_MTN_DIES,
+                    User::ROLE_MGR_GM,
+                    User::ROLE_MD,
+                    User::ROLE_PPIC,
+                    User::ROLE_PRODUCTION,
                 ])
                 ->get();
 
@@ -634,8 +648,12 @@ class DieMonitoringService
             // Send Red Alert to all relevant users
             $recipients = User::where('is_active', true)
                 ->whereIn('role', [
-                    User::ROLE_ADMIN, User::ROLE_MTN_DIES, User::ROLE_MGR_GM,
-                    User::ROLE_MD, User::ROLE_PPIC, User::ROLE_PRODUCTION,
+                    User::ROLE_ADMIN,
+                    User::ROLE_MTN_DIES,
+                    User::ROLE_MGR_GM,
+                    User::ROLE_MD,
+                    User::ROLE_PPIC,
+                    User::ROLE_PRODUCTION,
                 ])
                 ->get();
 

@@ -825,7 +825,7 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                         Last PPM
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Last Stroke
+                                        Accumulation Stroke
                                     </th>
                                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Actions
@@ -979,7 +979,7 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                                 {die.last_ppm_date || '-'}
                                             </td>
                                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                                {die.last_stroke != null ? die.last_stroke.toLocaleString() : '-'}
+                                                {die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-'}
                                             </td>
                                             <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                                 <div className="flex items-center justify-end gap-2">
@@ -1108,7 +1108,7 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                         Last PPM Dies
                                     </th>
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
-                                        Last Stroke
+                                        Accumulation Stroke
                                     </th>
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                         PPM Standard
@@ -1178,7 +1178,7 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                                         </td>
                                           <td className="px-3 py-2 text-center">
                                             <span className="text-sm text-gray-700 dark:text-gray-300">
-                                                {die.last_stroke != null ? die.last_stroke.toLocaleString() : '-'}
+                                                {die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-'}
                                             </span>
                                         </td>
                                         <td className="px-3 py-2 text-center">

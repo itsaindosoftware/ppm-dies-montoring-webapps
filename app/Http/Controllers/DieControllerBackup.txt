@@ -46,7 +46,7 @@ class DieController extends Controller
                 'dies_size' => $die->dies_size,
                 'line' => $die->line,
                 'process_type' => $die->process_type,
-                'accumulation_stroke' => $die->accumulation_stroke,
+                'accumulation_stroke' => $die->combined_stroke,
                 'standard_stroke' => $die->standard_stroke,
                 'ppm_standard' => $die->ppm_standard,
                 'remaining_strokes' => $die->remaining_strokes,
@@ -61,7 +61,7 @@ class DieController extends Controller
                 'ppm_alert_status' => $die->ppm_alert_status,
                 'ppm_alert_status_label' => $die->ppm_alert_status_label,
                 'last_ppm_date' => $die->last_ppm_date?->format('d-M-Y'),
-                'last_stroke' => $die->last_stroke,
+                'last_stroke' => $die->latestProductionLog?->output_qty,
                 // PPM Conditions Info
                 'ppm_trigger_condition' => $die->ppm_trigger_condition,
                 'ppm_conditions_info' => $die->ppm_conditions_info,
@@ -177,6 +177,7 @@ class DieController extends Controller
             'productionLogs' => fn($q) => $q->orderByDesc('production_date')->limit(50),
             'ppmHistories' => fn($q) => $q->orderByDesc('ppm_date'),
             'dieProcesses',
+            'latestProductionLog',
         ]);
 
         // Build schedule info: prioritize dies table fields, fallback to ppm_schedules table
@@ -240,8 +241,8 @@ class DieController extends Controller
                 'qty_die' => $die->qty_die,
                 'line' => $die->line,
                 'process_type' => $die->process_type,
-                'accumulation_stroke' => $die->accumulation_stroke,
-                'last_stroke' => $die->last_stroke,
+                'accumulation_stroke' => $die->combined_stroke,
+                'last_stroke' => $die->latestProductionLog?->output_qty,
                 'standard_stroke' => $die->standard_stroke,
                 'remaining_strokes' => $die->remaining_strokes,
                 'stroke_percentage' => $die->stroke_percentage,
@@ -314,30 +315,10 @@ class DieController extends Controller
      */
     public function edit(DieModel $die)
     {
-        // dd($die);
-
-        // Collect distinct die groups from existing records
-        $existingGroups = DieModel::whereNotNull('die_group')
-            ->where('die_group', '!=', '')
-            ->distinct()
-            ->orderBy('die_group')
-            ->pluck('die_group')
-            ->toArray();
-
-        // Also derive groups from part_number prefixes (first 5 chars)
-        $partPrefixes = DieModel::whereNotNull('part_number')
-            ->where('part_number', '!=', '')
-            ->pluck('part_number')
-            ->map(fn($p) => substr($p, 0, 5))
-            ->unique()
-            ->sort()
-            ->values()
-            ->toArray();
-
-        $dieGroups = collect(array_merge($existingGroups, $partPrefixes))
-            ->unique()
-            ->sort()
-            ->values();
+        $die->setAttribute(
+            'die_group',
+            $this->resolveDieGroup($die->part_number, $die->die_group) ?? ''
+        );
 
         return Inertia::render('Dies/Edit', [
             'die' => $die,
@@ -347,7 +328,7 @@ class DieController extends Controller
             ])
                 ->active()
                 ->get(['id', 'code', 'name', 'tonnage_standard_id']),
-            'dieGroups' => $dieGroups,
+            'dieGroups' => $this->getAvailableDieGroups(),
         ]);
     }
 
@@ -371,8 +352,13 @@ class DieController extends Controller
             'location' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
             'is_4lot_check' => 'boolean',
-            'die_group' => 'nullable|string|max:20',
+            'die_group' => 'nullable|string|min:5|max:21',
         ]);
+
+        $validated['die_group'] = $this->resolveDieGroup(
+            $validated['part_number'],
+            $validated['die_group'] ?? null,
+        );
 
         // When die_group is provided, treat input last_stroke as increment value.
         // Resulting accumulated value is synchronized to all dies in the same group key.
@@ -990,5 +976,80 @@ class DieController extends Controller
 
         return redirect()->back()
             ->with('success', "{$count} die Last LOT Date set successfully.");
+    }
+
+    private function getAvailableDieGroups()
+    {
+        $existingGroups = DieModel::whereNotNull('die_group')
+            ->where('die_group', '!=', '')
+            ->pluck('die_group')
+            ->map(fn($group) => $this->sanitizeDieGroup($group));
+
+        $derivedGroups = DieModel::whereNotNull('part_number')
+            ->where('part_number', '!=', '')
+            ->pluck('part_number')
+            ->map(fn($partNumber) => $this->deriveDieGroupFromPartNumber($partNumber));
+
+        return $existingGroups
+            ->merge($derivedGroups)
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
+    }
+
+    private function resolveDieGroup(?string $partNumber, ?string $dieGroup): ?string
+    {
+        $derivedGroup = $this->deriveDieGroupFromPartNumber($partNumber);
+        $manualGroup = $this->sanitizeDieGroup($dieGroup);
+
+        if ($manualGroup && $this->isDieGroupValidForPartNumber($partNumber, $manualGroup)) {
+            return $manualGroup;
+        }
+
+        return $derivedGroup;
+    }
+
+    private function deriveDieGroupFromPartNumber(?string $partNumber): ?string
+    {
+        $normalized = trim(preg_replace('/\s+/', ' ', (string) $partNumber));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $basePartNumber = preg_replace('/\s*\([^)]*\)\s*$/', '', $normalized);
+        $candidate = substr($basePartNumber, 0, 21);
+
+        return $this->sanitizeDieGroup($candidate);
+    }
+
+    private function sanitizeDieGroup(?string $dieGroup): ?string
+    {
+        $normalized = trim(preg_replace('/\s+/', ' ', (string) $dieGroup));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $normalized = preg_replace('/\s*\([^)]*\)\s*$/', '', $normalized);
+        $normalized = rtrim($normalized, " -");
+
+        if (strlen($normalized) < 5) {
+            return null;
+        }
+
+        return substr($normalized, 0, 21);
+    }
+
+    private function isDieGroupValidForPartNumber(?string $partNumber, string $dieGroup): bool
+    {
+        $basePartNumber = $this->deriveDieGroupFromPartNumber($partNumber);
+
+        if (!$basePartNumber) {
+            return false;
+        }
+
+        return str_starts_with($basePartNumber, $dieGroup);
     }
 }

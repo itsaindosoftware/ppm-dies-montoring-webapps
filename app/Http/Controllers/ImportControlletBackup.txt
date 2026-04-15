@@ -78,7 +78,7 @@ class ImportController extends Controller
 
         return Excel::download(
             new PpmScheduleTemplateExport($year, $model, $customer),
-            'Template_PPM_Schedule_' .  $year . '_' . date('Y-m-d') . '.xlsx'
+            'Template_PPM_Schedule_' . $year . '_' . date('Y-m-d') . '.xlsx'
         );
     }
 

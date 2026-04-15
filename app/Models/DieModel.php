@@ -4,8 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasEncryptedRouteKey;
 
 class DieModel extends Model
@@ -113,6 +111,11 @@ class DieModel extends Model
         return $this->hasMany(ProductionLog::class, 'die_id');
     }
 
+    public function latestProductionLog()
+    {
+        return $this->hasOne(ProductionLog::class, 'die_id')->latestOfMany();
+    }
+
     public function ppmSchedules()
     {
         return $this->hasMany(PpmSchedule::class, 'die_id');
@@ -131,6 +134,70 @@ class DieModel extends Model
     public function dieProcesses()
     {
         return $this->hasMany(DieProcess::class, 'die_id')->orderBy('process_order');
+    }
+
+    public static function resolveDieGroup(?string $partNumber, ?string $dieGroup): ?string
+    {
+        $derivedGroup = static::deriveDieGroupFromPartNumber($partNumber);
+        $manualGroup = static::sanitizeDieGroup($dieGroup);
+
+        if ($manualGroup && static::isDieGroupValidForPartNumber($partNumber, $manualGroup)) {
+            return $manualGroup;
+        }
+
+        return $derivedGroup;
+    }
+
+    public static function deriveDieGroupFromPartNumber(?string $partNumber): ?string
+    {
+        $normalized = trim(preg_replace('/\s+/', ' ', (string) $partNumber));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $basePartNumber = preg_replace('/\s*\([^)]*\)\s*$/', '', $normalized);
+        $candidate = substr($basePartNumber, 0, 21);
+
+        return static::sanitizeDieGroup($candidate);
+    }
+
+    public static function sanitizeDieGroup(?string $dieGroup): ?string
+    {
+        $normalized = trim(preg_replace('/\s+/', ' ', (string) $dieGroup));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $normalized = preg_replace('/\s*\([^)]*\)\s*$/', '', $normalized);
+        $normalized = rtrim($normalized, " -");
+
+        if (strlen($normalized) < 5) {
+            return null;
+        }
+
+        return substr($normalized, 0, 21);
+    }
+
+    public static function isDieGroupValidForPartNumber(?string $partNumber, string $dieGroup): bool
+    {
+        $basePartNumber = static::deriveDieGroupFromPartNumber($partNumber);
+
+        if (!$basePartNumber) {
+            return false;
+        }
+
+        return str_starts_with($basePartNumber, $dieGroup);
+    }
+
+    public static function areDieGroupsCompatible(?string $left, ?string $right): bool
+    {
+        if (!$left || !$right) {
+            return false;
+        }
+
+        return str_starts_with($left, $right) || str_starts_with($right, $left);
     }
 
     /**
@@ -204,7 +271,7 @@ class DieModel extends Model
      */
     public function getRemainingStrokesAttribute()
     {
-        $currentStroke = $this->combined_stroke;
+        $currentStroke = (int) ($this->accumulation_stroke ?? 0);
         return max(0, $this->standard_stroke - $currentStroke);
     }
 
@@ -217,7 +284,7 @@ class DieModel extends Model
         if ($standardStroke <= 0)
             return 100;
 
-        $currentStroke = $this->combined_stroke;
+        $currentStroke = (int) ($this->accumulation_stroke ?? 0);
         return round(($currentStroke / $standardStroke) * 100, 1);
     }
 
@@ -241,7 +308,7 @@ class DieModel extends Model
         if ($lotSize <= 0)
             return 0;
 
-        $currentStroke = $this->combined_stroke;
+        $currentStroke = (int) ($this->accumulation_stroke ?? 0);
         return (int) floor($currentStroke / $lotSize) + 1;
     }
 
@@ -324,7 +391,7 @@ class DieModel extends Model
         if ($lotSize <= 0 || $standardStroke <= 0)
             return 'green';
 
-        $currentStroke = $this->combined_stroke;
+        $currentStroke = (int) ($this->accumulation_stroke ?? 0);
 
         // Orange threshold = standard_stroke - lot_size
         $orangeThreshold = $standardStroke - $lotSize;
@@ -407,7 +474,7 @@ class DieModel extends Model
     {
         $lotSize = $this->lot_size_value;
         $standardStroke = $this->standard_stroke;
-        $accumulation = $this->combined_stroke;
+        $accumulation = (int) ($this->accumulation_stroke ?? 0);
         $ppmCount = $this->ppm_count ?? 0;
 
         // Kondisi 1: Target Standard Stroke (Red / PPM Required)
@@ -459,7 +526,7 @@ class DieModel extends Model
         $totalLots = $this->total_lots;
         $lotSize = $this->lot_size_value;
         $standardStroke = $this->standard_stroke;
-        $accumulationStroke = $this->combined_stroke;
+        $accumulationStroke = (int) ($this->accumulation_stroke ?? 0);
 
         if ($totalLots <= 0) {
             return $lots;
