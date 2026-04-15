@@ -46,7 +46,7 @@ class DieController extends Controller
                 'dies_size' => $die->dies_size,
                 'line' => $die->line,
                 'process_type' => $die->process_type,
-                'accumulation_stroke' => $die->combined_stroke,
+                'accumulation_stroke' => $die->accumulation_stroke,
                 'standard_stroke' => $die->standard_stroke,
                 'ppm_standard' => $die->ppm_standard,
                 'remaining_strokes' => $die->remaining_strokes,
@@ -61,7 +61,7 @@ class DieController extends Controller
                 'ppm_alert_status' => $die->ppm_alert_status,
                 'ppm_alert_status_label' => $die->ppm_alert_status_label,
                 'last_ppm_date' => $die->last_ppm_date?->format('d-M-Y'),
-                'last_stroke' => $die->last_stroke,
+                'last_stroke' => $die->latestProductionLog?->output_qty,
                 // PPM Conditions Info
                 'ppm_trigger_condition' => $die->ppm_trigger_condition,
                 'ppm_conditions_info' => $die->ppm_conditions_info,
@@ -177,6 +177,7 @@ class DieController extends Controller
             'productionLogs' => fn($q) => $q->orderByDesc('production_date')->limit(50),
             'ppmHistories' => fn($q) => $q->orderByDesc('ppm_date'),
             'dieProcesses',
+            'latestProductionLog',
         ]);
 
         // Build schedule info: prioritize dies table fields, fallback to ppm_schedules table
@@ -240,8 +241,8 @@ class DieController extends Controller
                 'qty_die' => $die->qty_die,
                 'line' => $die->line,
                 'process_type' => $die->process_type,
-                'accumulation_stroke' => $die->combined_stroke,
-                'last_stroke' => $die->last_stroke,
+                'accumulation_stroke' => $die->accumulation_stroke,
+                'last_stroke' => $die->latestProductionLog?->output_qty,
                 'standard_stroke' => $die->standard_stroke,
                 'remaining_strokes' => $die->remaining_strokes,
                 'stroke_percentage' => $die->stroke_percentage,
@@ -314,30 +315,10 @@ class DieController extends Controller
      */
     public function edit(DieModel $die)
     {
-        // dd($die);
-
-        // Collect distinct die groups from existing records
-        $existingGroups = DieModel::whereNotNull('die_group')
-            ->where('die_group', '!=', '')
-            ->distinct()
-            ->orderBy('die_group')
-            ->pluck('die_group')
-            ->toArray();
-
-        // Also derive groups from part_number prefixes (first 5 chars)
-        $partPrefixes = DieModel::whereNotNull('part_number')
-            ->where('part_number', '!=', '')
-            ->pluck('part_number')
-            ->map(fn($p) => substr($p, 0, 5))
-            ->unique()
-            ->sort()
-            ->values()
-            ->toArray();
-
-        $dieGroups = collect(array_merge($existingGroups, $partPrefixes))
-            ->unique()
-            ->sort()
-            ->values();
+        $die->setAttribute(
+            'die_group',
+            $this->resolveDieGroup($die->part_number, $die->die_group) ?? ''
+        );
 
         return Inertia::render('Dies/Edit', [
             'die' => $die,
@@ -347,7 +328,7 @@ class DieController extends Controller
             ])
                 ->active()
                 ->get(['id', 'code', 'name', 'tonnage_standard_id']),
-            'dieGroups' => $dieGroups,
+            'dieGroups' => $this->getAvailableDieGroups(),
         ]);
     }
 
@@ -367,42 +348,29 @@ class DieController extends Controller
             'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
             'control_stroke' => 'nullable|integer|min:0',
             'last_ppm_date' => 'nullable|date',
-            'last_stroke' => 'nullable|integer|min:0',
+            'accumulation_stroke' => 'nullable|integer|min:0',
             'location' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
             'is_4lot_check' => 'boolean',
-            'die_group' => 'nullable|string|max:20',
+            'die_group' => 'nullable|string|min:5|max:21',
         ]);
 
-        // When die_group is provided, treat input last_stroke as increment value.
-        // Resulting accumulated value is synchronized to all dies in the same group key.
-        $inputStroke = (int) ($validated['last_stroke'] ?? 0);
-        $newDieGroup = trim((string) ($validated['die_group'] ?? ''));
+        $validated['die_group'] = $this->resolveDieGroup(
+            $validated['part_number'],
+            $validated['die_group'] ?? null,
+        );
 
-        if ($newDieGroup !== '') {
-            DB::transaction(function () use ($die, $validated, $inputStroke, $newDieGroup) {
-                $groupLength = strlen($newDieGroup);
-                $currentStroke = (int) ($die->last_stroke ?? 0);
-                $accumulatedStroke = $currentStroke + $inputStroke;
+        $newGroup = $validated['die_group'];
+        $newAccumulationStroke = (int) ($validated['accumulation_stroke'] ?? 0);
 
-                $updatePayload = $validated;
-                $updatePayload['last_stroke'] = $accumulatedStroke;
-                $die->update($updatePayload);
-
-                DieModel::where('id', '!=', $die->id)
-                    ->where(function ($query) use ($newDieGroup, $groupLength) {
-                        $query->where('die_group', $newDieGroup)
-                            ->orWhereRaw('LEFT(TRIM(part_number), ?) = ?', [$groupLength, $newDieGroup]);
-                    })
-                    ->update([
-                        'die_group' => $newDieGroup,
-                        'last_stroke' => $accumulatedStroke,
-                    ]);
-            });
-        } else {
-            // Without die_group, keep regular direct update only for edited die.
+        DB::transaction(function () use ($die, $validated, $newGroup, $newAccumulationStroke) {
             $die->update($validated);
-        }
+
+            // If die has a group, set ALL group members' accumulation_stroke to the same value
+            if ($newGroup) {
+                $this->setGroupAccumulationStroke($newGroup, $newAccumulationStroke, $die->id);
+            }
+        });
 
         return redirect()->route('dies.index')
             ->with('success', 'Die updated successfully.');
@@ -990,5 +958,107 @@ class DieController extends Controller
 
         return redirect()->back()
             ->with('success', "{$count} die Last LOT Date set successfully.");
+    }
+
+    private function getAvailableDieGroups()
+    {
+        $existingGroups = DieModel::whereNotNull('die_group')
+            ->where('die_group', '!=', '')
+            ->pluck('die_group')
+            ->map(fn($group) => $this->sanitizeDieGroup($group));
+
+        $derivedGroups = DieModel::whereNotNull('part_number')
+            ->where('part_number', '!=', '')
+            ->pluck('part_number')
+            ->map(fn($partNumber) => $this->deriveDieGroupFromPartNumber($partNumber));
+
+        return $existingGroups
+            ->merge($derivedGroups)
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
+    }
+
+    private function resolveDieGroup(?string $partNumber, ?string $dieGroup): ?string
+    {
+        return DieModel::resolveDieGroup($partNumber, $dieGroup);
+    }
+
+    private function deriveDieGroupFromPartNumber(?string $partNumber): ?string
+    {
+        return DieModel::deriveDieGroupFromPartNumber($partNumber);
+    }
+
+    private function sanitizeDieGroup(?string $dieGroup): ?string
+    {
+        return DieModel::sanitizeDieGroup($dieGroup);
+    }
+
+    private function isDieGroupValidForPartNumber(?string $partNumber, string $dieGroup): bool
+    {
+        return DieModel::isDieGroupValidForPartNumber($partNumber, $dieGroup);
+    }
+
+    private function adjustGroupedAccumulationStroke(?string $groupKey, int $deltaStroke, ?int $excludeDieId = null): void
+    {
+        if (!$groupKey || $deltaStroke === 0) {
+            return;
+        }
+
+        $this->getDiesInCompatibleGroup($groupKey)
+            ->when($excludeDieId, fn($collection) => $collection->where('id', '!=', $excludeDieId))
+            ->each(function (DieModel $groupedDie) use ($groupKey, $deltaStroke) {
+                $newAccumulationStroke = max(0, (int) ($groupedDie->accumulation_stroke ?? 0) + $deltaStroke);
+
+                $payload = [
+                    'accumulation_stroke' => $newAccumulationStroke,
+                ];
+
+                if (DieModel::isDieGroupValidForPartNumber($groupedDie->part_number, $groupKey)) {
+                    $payload['die_group'] = $groupKey;
+                }
+
+                $groupedDie->update($payload);
+            });
+    }
+
+    private function getDiesInCompatibleGroup(?string $groupKey)
+    {
+        if (!$groupKey) {
+            return collect();
+        }
+
+        $queryPrefix = substr($groupKey, 0, 5);
+
+        return DieModel::query()
+            ->where(function ($query) use ($queryPrefix) {
+                $query->where('part_number', 'like', $queryPrefix . '%')
+                    ->orWhere('die_group', 'like', $queryPrefix . '%');
+            })
+            ->get()
+            ->filter(function (DieModel $candidate) use ($groupKey) {
+                $candidateGroup = DieModel::resolveDieGroup($candidate->part_number, $candidate->die_group);
+
+                return DieModel::areDieGroupsCompatible($groupKey, $candidateGroup);
+            })
+            ->values();
+    }
+
+    private function setGroupAccumulationStroke(string $groupKey, int $accumulationStroke, ?int $excludeDieId = null): void
+    {
+        $this->getDiesInCompatibleGroup($groupKey)
+            ->when($excludeDieId, fn($collection) => $collection->where('id', '!=', $excludeDieId))
+            ->each(function (DieModel $groupedDie) use ($groupKey, $accumulationStroke) {
+                $payload = [
+                    'accumulation_stroke' => $accumulationStroke,
+                ];
+
+                if (DieModel::isDieGroupValidForPartNumber($groupedDie->part_number, $groupKey)) {
+                    $payload['die_group'] = $groupKey;
+                }
+
+                $groupedDie->update($payload);
+            });
     }
 }

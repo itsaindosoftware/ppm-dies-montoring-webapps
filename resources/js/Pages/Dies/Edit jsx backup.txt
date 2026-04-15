@@ -9,6 +9,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
         machine_model_id: die. machine_model_id || '',
         customer_id: die.customer_id || '',
         qty_die: die.qty_die || 1,
+        dies_size: die.dies_size || '',
         line: die.line || '',
         process_type: die.process_type || '',
         control_stroke: die.control_stroke || '',
@@ -156,41 +157,64 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                 </div>
                             </div>
 
-                            {/* Line & Process Type */}
+                            {/* Dies Size & Line */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Line
+                                        Dies Size
                                     </label>
                                     <input
                                         type="text"
                                         value={data.line}
                                         onChange={(e) => setData('line', e.target.value)}
-                                        placeholder="e.g., 800T, 1200T"
+                                        placeholder="e.g., 800T, 1200T, Progressive"
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
+                                    {errors.line && <p className="text-red-500 text-xs mt-1">{errors.line}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Process Type
+                                        Line *
                                     </label>
                                     <select
-                                        value={data.process_type}
-                                        onChange={(e) => setData('process_type', e.target.value)}
+                                        value={data.dies_size}
+                                        onChange={(e) => setData('dies_size', e.target.value)}
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     >
-                                        <option value="">-- Select Process --</option>
-                                        {PROCESS_TYPES.map((p) => (
-                                            <option key={p.value} value={p.value}>
-                                                {p.label}
-                                            </option>
-                                        ))}
+                                        <option value="">-- Select Line --</option>
+                                        <option value="A1 Line">A1 Line</option>
+                                        <option value="A2 Line">A2 Line</option>
+                                        <option value="B1 Line">B1 Line</option>
+                                        <option value="B2 Line">B2 Line</option>
                                     </select>
-                                    {errors.process_type && <p className="text-red-500 text-xs mt-1">{errors.process_type}</p>}
+                                    {errors.dies_size && <p className="text-red-500 text-xs mt-1">{errors.dies_size}</p>}
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Determines PPM inspection checklist form
+                                        Production line location (A1, A2, B1, B2)
                                     </p>
                                 </div>
+                            </div>
+
+                            {/* Process Type */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Process Type
+                                </label>
+                                <select
+                                    value={data.process_type}
+                                    onChange={(e) => setData('process_type', e.target.value)}
+                                    className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
+                                >
+                                    <option value="">-- Select Process --</option>
+                                    {PROCESS_TYPES.map((p) => (
+                                        <option key={p.value} value={p.value}>
+                                            {p.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                {errors.process_type && <p className="text-red-500 text-xs mt-1">{errors.process_type}</p>}
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Determines PPM inspection checklist form
+                                </p>
                             </div>
 
                             {/* Die Group (Grouping) */}
@@ -264,7 +288,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Stroke count at last PPM check
+                                        Jika Die Group diisi, nilai ini dianggap penambahan stroke dan akan diakumulasikan ke semua part dalam group yang sama.
                                     </p>
                                 </div>
                             </div>

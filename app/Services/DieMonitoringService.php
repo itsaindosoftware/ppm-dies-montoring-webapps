@@ -126,8 +126,11 @@ class DieMonitoringService
      */
     public function getDies(array $filters = [], int $perPage = 15)
     {
-        $query = DieModel::with(['machineModel.tonnageStandard', 'customer'])
-            ->active();
+        $query = DieModel::with([
+            'machineModel.tonnageStandard',
+            'customer',
+            'latestProductionLog',
+        ])->active();
 
         // Filter by customer
         if (!empty($filters['customer_id'])) {

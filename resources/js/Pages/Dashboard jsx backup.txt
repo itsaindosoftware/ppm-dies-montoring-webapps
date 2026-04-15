@@ -50,7 +50,6 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                         icon="fa-check-circle"
                         color="green"
                         subtitle="PPM up to date"
-                        href={route('dies.index', { status: 'green' })}
                     />
                     <StatsCard
                         title="Orange Status"
@@ -58,7 +57,6 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                         icon="fa-exclamation-triangle"
                         color="orange"
                         subtitle="Plan PPM soon"
-                        href={route('dies.index', { status: 'orange' })}
                     />
                     <StatsCard
                         title="Red Status"
@@ -66,7 +64,6 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                         icon="fa-times-circle"
                         color="red"
                         subtitle="Need PPM now!"
-                        href={route('dies.index', { status: 'red' })}
                     />
                 </div>
 
@@ -354,7 +351,7 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                                 <div className="mt-3 text-center">
                                     <Link
                                         href={route('dies.index')}
-                                        className="text-sm text-blue-600 hover:text-blue-800"
+                                        className="text-sm text-blue-600 hover: text-blue-800"
                                     >
                                         View all {criticalDies.length} critical dies →
                                     </Link>

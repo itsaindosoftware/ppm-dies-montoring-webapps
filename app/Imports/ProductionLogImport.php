@@ -38,8 +38,6 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
 
         // Flexible key lookup for part_number
         $partNumber = $this->cleanValue($row['part_number'] ?? $row['part_no'] ?? $row['partnumber'] ?? null);
-        $rowPartName = $this->cleanValue($row['part_name'] ?? null);
-        $rowModel = $this->cleanValue($row['model'] ?? null);
 
         // Skip if no part number
         if (empty($partNumber)) {
@@ -123,7 +121,7 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             if ($matchedByBase) {
                 $existingLog->increment('output_qty', $outputQty);
 
-                $strokeSync = $this->syncGroupedStrokes($die, $partNumber, $rowPartName, $rowModel, $outputQty);
+                $strokeSync = $this->syncGroupedStrokes($die, $partNumber, $outputQty);
 
                 $this->accumulatedCount++;
                 $this->accumulatedRows[] = [
@@ -163,7 +161,7 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
             }
         }
 
-        $strokeSync = $this->syncGroupedStrokes($die, $partNumber, $rowPartName, $rowModel, $outputQty);
+        $strokeSync = $this->syncGroupedStrokes($die, $partNumber, $outputQty);
 
         $this->importedCount++;
 
@@ -296,35 +294,13 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
     }
 
     /**
-     * Sync grouped die stroke values based on prefix + part_name + model.
+     * Sync grouped die stroke values using the same die_group rules as edit/update.
      * Only accumulation_stroke is updated from production output import.
      */
-    protected function syncGroupedStrokes(DieModel $seedDie, string $partNumber, ?string $partName, ?string $model, int $outputQty): array
+    protected function syncGroupedStrokes(DieModel $seedDie, string $partNumber, int $outputQty): array
     {
-        $prefix = $this->extractPartPrefix($partNumber);
-        $normalizedPartName = strtolower(trim((string) ($partName ?: $seedDie->part_name)));
-        $normalizedModel = strtolower(trim((string) ($model ?: $seedDie->model)));
-
-        $baseQuery = DieModel::whereRaw('LEFT(TRIM(part_number), ?) = ?', [strlen($prefix), $prefix])
-            ->whereRaw('LOWER(TRIM(part_name)) = ?', [$normalizedPartName])
-            ->where('customer_id', $seedDie->customer_id);
-
-        $groupedDies = (clone $baseQuery)
-            ->where(function ($query) use ($normalizedModel) {
-                $query->whereRaw('LOWER(TRIM(COALESCE(model, ""))) = ?', [$normalizedModel])
-                    ->orWhereRaw('LOWER(TRIM(COALESCE(dies_size, ""))) = ?', [$normalizedModel])
-                    ->orWhereHas('machineModel', function ($machineQuery) use ($normalizedModel) {
-                        $machineQuery->whereRaw('LOWER(TRIM(COALESCE(code, ""))) = ?', [$normalizedModel])
-                            ->orWhereRaw('LOWER(TRIM(COALESCE(name, ""))) = ?', [$normalizedModel]);
-                    });
-            })
-            ->get();
-
-        // Fallback: if model mapping differs between Excel and dies master,
-        // still group by prefix + part name + customer.
-        if ($groupedDies->isEmpty()) {
-            $groupedDies = (clone $baseQuery)->get();
-        }
+        $groupKey = DieModel::resolveDieGroup($partNumber, $seedDie->die_group);
+        $groupedDies = $this->getGroupedDies($seedDie, $groupKey);
 
         if ($groupedDies->isEmpty()) {
             $groupedDies = collect([$seedDie]);
@@ -355,14 +331,32 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         ];
     }
 
-    protected function extractPartPrefix(string $partNumber): string
+    protected function getGroupedDies(DieModel $seedDie, ?string $groupKey)
     {
-        $trimmed = trim($partNumber);
-        if ($trimmed === '') {
-            return '';
+        if (!$groupKey) {
+            return collect([$seedDie]);
         }
 
-        return substr($trimmed, 0, 5);
+        $queryPrefix = substr($groupKey, 0, 5);
+
+        $candidateDies = DieModel::query()
+            ->where(function ($query) use ($queryPrefix) {
+                $query->where('part_number', 'like', $queryPrefix . '%')
+                    ->orWhere('die_group', 'like', $queryPrefix . '%');
+            })
+            ->get();
+
+        $groupedDies = $candidateDies->filter(function (DieModel $candidate) use ($groupKey) {
+            $candidateGroup = DieModel::resolveDieGroup($candidate->part_number, $candidate->die_group);
+
+            return DieModel::areDieGroupsCompatible($groupKey, $candidateGroup);
+        })->values();
+
+        if ($groupedDies->contains(fn(DieModel $candidate) => $candidate->id === $seedDie->id)) {
+            return $groupedDies;
+        }
+
+        return $groupedDies->push($seedDie)->unique('id')->values();
     }
 
     public function getImportedCount(): int
