@@ -67,6 +67,8 @@ class DieModel extends Model
         'ppm_total_days',
         // Group classification
         'die_group',
+        'group_name',
+        'group_id',
         // Special 4-lot check flag
         'is_4lot_check',
         // Schedule remarks
