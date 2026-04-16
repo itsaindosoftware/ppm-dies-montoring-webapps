@@ -1,0 +1,3 @@
+   // yang dies size sebelumnya berupa data Line
+    // yang kolom baru Line, diisi oleh A1, A2, B1, B2 Line
+    // nanti yang di database, Line yang baru diisi oleh dies size
