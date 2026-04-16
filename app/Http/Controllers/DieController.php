@@ -315,11 +315,6 @@ class DieController extends Controller
      */
     public function edit(DieModel $die)
     {
-        $die->setAttribute(
-            'die_group',
-            $this->resolveDieGroup($die->part_number, $die->die_group) ?? ''
-        );
-
         return Inertia::render('Dies/Edit', [
             'die' => $die,
             'customers' => Customer::active()->get(['id', 'code', 'name']),
@@ -328,7 +323,7 @@ class DieController extends Controller
             ])
                 ->active()
                 ->get(['id', 'code', 'name', 'tonnage_standard_id']),
-            'dieGroups' => $this->getAvailableDieGroups(),
+            'groupNames' => $this->getAvailableGroupNames(),
         ]);
     }
 
@@ -352,23 +347,21 @@ class DieController extends Controller
             'location' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
             'is_4lot_check' => 'boolean',
-            'die_group' => 'nullable|string|min:5|max:21',
+            'group_name' => 'nullable|string|max:100',
         ]);
 
-        $validated['die_group'] = $this->resolveDieGroup(
-            $validated['part_number'],
-            $validated['die_group'] ?? null,
-        );
-
-        $newGroup = $validated['die_group'];
+        $newGroupName = $validated['group_name'] ?? null;
         $newAccumulationStroke = (int) ($validated['accumulation_stroke'] ?? 0);
 
-        DB::transaction(function () use ($die, $validated, $newGroup, $newAccumulationStroke) {
+        DB::transaction(function () use ($die, $validated, $newGroupName, $newAccumulationStroke) {
+            // Update only this die's data (including group_name)
             $die->update($validated);
 
-            // If die has a group, set ALL group members' accumulation_stroke to the same value
-            if ($newGroup) {
-                $this->setGroupAccumulationStroke($newGroup, $newAccumulationStroke, $die->id);
+            // Sync accumulation_stroke to dies with the same group_name
+            if ($newGroupName) {
+                DieModel::where('group_name', $newGroupName)
+                    ->where('id', '!=', $die->id)
+                    ->update(['accumulation_stroke' => $newAccumulationStroke]);
             }
         });
 
@@ -1045,20 +1038,15 @@ class DieController extends Controller
             ->values();
     }
 
-    private function setGroupAccumulationStroke(string $groupKey, int $accumulationStroke, ?int $excludeDieId = null): void
+
+
+    private function getAvailableGroupNames()
     {
-        $this->getDiesInCompatibleGroup($groupKey)
-            ->when($excludeDieId, fn($collection) => $collection->where('id', '!=', $excludeDieId))
-            ->each(function (DieModel $groupedDie) use ($groupKey, $accumulationStroke) {
-                $payload = [
-                    'accumulation_stroke' => $accumulationStroke,
-                ];
-
-                if (DieModel::isDieGroupValidForPartNumber($groupedDie->part_number, $groupKey)) {
-                    $payload['die_group'] = $groupKey;
-                }
-
-                $groupedDie->update($payload);
-            });
+        return DieModel::whereNotNull('group_name')
+            ->where('group_name', '!=', '')
+            ->distinct()
+            ->orderBy('group_name')
+            ->pluck('group_name')
+            ->values();
     }
 }

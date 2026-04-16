@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { PROCESS_TYPES } from '@/Utils/PpmChecklistData';
 
-export default function DieEdit({ auth, die, customers, machineModels, dieGroups = [] }) {
+export default function DieEdit({ auth, die, customers, machineModels, groupNames = [] }) {
     const { data, setData, patch, processing, errors } = useForm({
         part_number: die.part_number || '',
         part_name: die.part_name || '',
@@ -18,28 +18,8 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
         location: die.location || '',
         notes: die. notes || '',
         is_4lot_check: die.is_4lot_check || false,
-        die_group: die.die_group || deriveDieGroup(die.part_number || ''),
+        group_name: die.group_name || '',
     });
-
-    function deriveDieGroup(partNumber) {
-        if (!partNumber) return '';
-
-        const normalized = String(partNumber).trim().replace(/\s+/g, ' ');
-        const withoutSuffix = normalized.replace(/\s*\([^)]*\)\s*$/, '').trim();
-        const candidate = withoutSuffix.slice(0, 21).replace(/[ -]+$/, '');
-
-        return candidate.length >= 5 ? candidate : '';
-    }
-
-    // Update die_group when part_number changes
-    const handlePartNumberChange = (e) => {
-        const newPartNumber = e.target.value;
-        setData({
-            ...data,
-            part_number: newPartNumber,
-            die_group: deriveDieGroup(newPartNumber),
-        });
-    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -82,7 +62,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                     <input
                                         type="text"
                                         value={data.part_number}
-                                        onChange={handlePartNumberChange}
+                                        onChange={(e) => setData('part_number', e.target.value)}
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                         required
                                     />
@@ -222,7 +202,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
 
                             {/* Die Group (Grouping) */}
                             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                                <div className="flex items-start gap-3 mb-3">
+                                <div className="flex items-start gap-3">
                                     <div className="flex-shrink-0 mt-0.5">
                                         <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -233,31 +213,32 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                             🔗 Die Group (Stroke Accumulation Group)
                                         </h4>
                                         <p className="text-xs text-blue-700 dark:text-blue-400 mb-3">
-                                            Dies with the same group will share stroke accumulation for Orange/Red alert calculation.
+                                            Dies dengan Group Name yang sama akan berbagi Accumulation Stroke.
                                             <br />
-                                            <strong>Example:</strong> 76453-B000P, 76453-C000P, 76453-B020P → All grouped as "76453"
+                                            Jika Group Name diubah, hanya data dies ini yang berubah Group Name-nya.
+                                            Accumulation Stroke akan di-sync ke semua dies dengan Group Name yang sama.
                                         </p>
                                         <div>
                                             <label className="block text-xs font-medium text-blue-800 dark:text-blue-300 mb-1">
-                                                Group ID (Auto-generated from Part Number)
+                                                Group Name
                                             </label>
                                             <input
                                                 type="text"
-                                                list="die-groups-list"
-                                                value={data.die_group}
-                                                onChange={(e) => setData('die_group', e.target.value)}
-                                                placeholder="e.g., 76453, 76452, 764B1"
+                                                list="group-names-list"
+                                                value={data.group_name}
+                                                onChange={(e) => setData('group_name', e.target.value)}
+                                                placeholder="e.g., Common Dies, 5240B908"
                                                 className="w-full rounded-md border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-300 shadow-sm"
                                                 autoComplete="off"
                                             />
-                                            <datalist id="die-groups-list">
-                                                {dieGroups.map((group) => (
-                                                    <option key={group} value={group} />
+                                            <datalist id="group-names-list">
+                                                {groupNames.filter(Boolean).map((name) => (
+                                                    <option key={name} value={name} />
                                                 ))}
                                             </datalist>
-                                            {errors.die_group && <p className="text-red-500 text-xs mt-1">{errors.die_group}</p>}
+                                            {errors.group_name && <p className="text-red-500 text-xs mt-1">{errors.group_name}</p>}
                                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                                💡 Auto-filled from Part Number. You can also type manually using the same Part Number prefix, minimum 5 and maximum 21 characters.
+                                                💡 Isi Group Name yang sama untuk dies yang ingin berbagi Accumulation Stroke.
                                             </p>
                                         </div>
                                     </div>
@@ -291,7 +272,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Jika Die Group diisi, nilai ini akan diset ke semua part dalam group yang sama.
+                                        Jika Data Kotak Die Group diisi, nilai ini akan diset ke semua part dalam group yang sama.
                                     </p>
                                 </div>
                             </div>

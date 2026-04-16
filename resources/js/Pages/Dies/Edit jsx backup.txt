@@ -14,19 +14,22 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
         process_type: die.process_type || '',
         control_stroke: die.control_stroke || '',
         last_ppm_date: die.last_ppm_date ? new Date(die.last_ppm_date).toISOString().split('T')[0] : '',
-        last_stroke: die.last_stroke ?? '',
+        accumulation_stroke: die.accumulation_stroke ?? '',
         location: die.location || '',
         notes: die. notes || '',
         is_4lot_check: die.is_4lot_check || false,
-        die_group: die.die_group || '',
+        die_group: die.die_group || deriveDieGroup(die.part_number || ''),
     });
 
-    // Auto-extract base part number (first 5 characters) for grouping
-    const extractBasePartNumber = (partNumber) => {
+    function deriveDieGroup(partNumber) {
         if (!partNumber) return '';
-        // Extract first 5 characters (e.g., "76453" from "76453-B000P")
-        return partNumber.substring(0, 5);
-    };
+
+        const normalized = String(partNumber).trim().replace(/\s+/g, ' ');
+        const withoutSuffix = normalized.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        const candidate = withoutSuffix.slice(0, 21).replace(/[ -]+$/, '');
+
+        return candidate.length >= 5 ? candidate : '';
+    }
 
     // Update die_group when part_number changes
     const handlePartNumberChange = (e) => {
@@ -34,7 +37,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
         setData({
             ...data,
             part_number: newPartNumber,
-            die_group: extractBasePartNumber(newPartNumber),
+            die_group: deriveDieGroup(newPartNumber),
         });
     };
 
@@ -254,7 +257,7 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                             </datalist>
                                             {errors.die_group && <p className="text-red-500 text-xs mt-1">{errors.die_group}</p>}
                                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                                💡 Auto-filled from first 5 characters of Part Number. Select from existing groups or type a new one.
+                                                💡 Auto-filled from Part Number. You can also type manually using the same Part Number prefix, minimum 5 and maximum 21 characters.
                                             </p>
                                         </div>
                                     </div>
@@ -277,18 +280,18 @@ export default function DieEdit({ auth, die, customers, machineModels, dieGroups
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Last Stroke
+                                        Accumulation Stroke
                                     </label>
                                     <input
                                         type="number"
-                                        value={data.last_stroke}
-                                        onChange={(e) => setData('last_stroke', e.target.value)}
+                                        value={data.accumulation_stroke}
+                                        onChange={(e) => setData('accumulation_stroke', e.target.value)}
                                         placeholder="e.g., 0"
                                         min="0"
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Jika Die Group diisi, nilai ini dianggap penambahan stroke dan akan diakumulasikan ke semua part dalam group yang sama.
+                                        Jika Die Group diisi, nilai ini akan diset ke semua part dalam group yang sama.
                                     </p>
                                 </div>
                             </div>
