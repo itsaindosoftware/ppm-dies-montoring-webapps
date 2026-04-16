@@ -260,6 +260,60 @@ class DieMonitoringService
 
             $die->update($updateData);
 
+            // Sync PPM completion to all dies with the same group_name
+            if ($die->group_name) {
+                $eligibleStatuses = [
+                    'transferred_to_mtn',
+                    'ppm_in_progress',
+                    'additional_repair',
+                ];
+
+                $groupMembers = DieModel::where('group_name', $die->group_name)
+                    ->where('id', '!=', $die->id)
+                    ->whereIn('ppm_alert_status', $eligibleStatuses)
+                    ->get();
+
+                foreach ($groupMembers as $member) {
+                    $memberPpmCount = ($member->ppm_count ?? 0) + 1;
+
+                    // Create PPM history for each group member
+                    PpmHistory::create([
+                        'die_id' => $member->id,
+                        'ppm_date' => $data['ppm_date'],
+                        'stroke_at_ppm' => $member->accumulation_stroke,
+                        'ppm_number' => $memberPpmCount,
+                        'process_type' => $data['process_type'] ?? $member->process_type,
+                        'checklist_results' => $data['checklist_results'] ?? null,
+                        'pic' => $data['pic'],
+                        'status' => 'done',
+                        'maintenance_type' => $data['maintenance_type'] ?? 'routine',
+                        'work_performed' => $data['work_performed'] ?? null,
+                        'parts_replaced' => $data['parts_replaced'] ?? null,
+                        'findings' => $data['findings'] ?? null,
+                        'recommendations' => $data['recommendations'] ?? null,
+                        'checked_by' => $data['checked_by'] ?? null,
+                        'approved_by' => $data['approved_by'] ?? null,
+                        'created_by' => auth()->id(),
+                    ]);
+
+                    $member->update([
+                        'ppm_count' => $memberPpmCount,
+                        'stroke_at_last_ppm' => 0,
+                        'last_ppm_date' => $data['ppm_date'],
+                        'ppm_alert_status' => 'ppm_completed',
+                        'ppm_finished_at' => now(),
+                        'ppm_total_days' => $member->red_alerted_at
+                            ? (int) $member->red_alerted_at->diffInWeekdays(now())
+                            : null,
+                        'accumulation_stroke' => 0,
+                        'last_stroke' => 0,
+                    ]);
+
+                    // Auto transfer back for group member too
+                    $this->transferBackToProduction($member);
+                }
+            }
+
             // Send PPM Completed notification to MD/GM
             $this->sendPpmCompletedNotification($die, $history);
 
@@ -363,6 +417,38 @@ class DieMonitoringService
 
         $die->update($updateData);
 
+        // Sync approval to all dies with the same group_name
+        if ($die->group_name) {
+            // Statuses that are already more advanced — don't downgrade
+            $advancedStatuses = [
+                'transferred_to_mtn',
+                'ppm_in_progress',
+                'additional_repair',
+                'ppm_completed',
+            ];
+
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->whereNotIn('ppm_alert_status', $advancedStatuses)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $memberUpdateData = [
+                    'ppm_alert_status' => 'schedule_approved',
+                    'schedule_approved_at' => now(),
+                    'schedule_approved_by' => auth()->user()?->name,
+                ];
+
+                // Copy ppm_scheduled_date from approved die if member doesn't have one yet
+                if (!$member->ppm_scheduled_date && $die->ppm_scheduled_date) {
+                    $memberUpdateData['ppm_scheduled_date'] = $die->ppm_scheduled_date;
+                    $memberUpdateData['ppm_scheduled_by'] = $die->ppm_scheduled_by;
+                }
+
+                $member->update($memberUpdateData);
+            }
+        }
+
         // Send notification
         $this->sendWorkflowNotification($die, 'schedule_approved');
     }
@@ -382,6 +468,32 @@ class DieMonitoringService
         // Initialize die processes if process types provided
         if (!empty($processTypes)) {
             $this->initializeDieProcesses($die, $processTypes);
+        }
+
+        // Sync PPM processing to all dies with the same group_name
+        if ($die->group_name) {
+            // Only advance dies that are at or before transferred_to_mtn stage
+            $eligibleStatuses = [
+                'schedule_approved',
+                'transferred_to_mtn',
+            ];
+
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->whereIn('ppm_alert_status', $eligibleStatuses)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update([
+                    'ppm_alert_status' => 'ppm_in_progress',
+                    'ppm_started_at' => now(),
+                ]);
+
+                // Initialize same processes for group members if provided
+                if (!empty($processTypes)) {
+                    $this->initializeDieProcesses($member, $processTypes);
+                }
+            }
         }
 
         // Send notification
@@ -416,6 +528,26 @@ class DieMonitoringService
 
         $die->update($updateData);
 
+        // Sync Last LOT Date to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $memberUpdateData = [
+                    'last_lot_date' => $data['last_lot_date'],
+                    'last_lot_date_set_by' => $data['set_by'] ?? auth()->user()?->name,
+                ];
+
+                if (!in_array($member->ppm_alert_status, $advancedStatuses)) {
+                    $memberUpdateData['ppm_alert_status'] = 'lot_date_set';
+                }
+
+                $member->update($memberUpdateData);
+            }
+        }
+
         // Send notification
         $this->sendWorkflowNotification($die, 'lot_date_set', $data['set_by'] ?? null, [
             'last_lot_date' => $data['last_lot_date'],
@@ -437,6 +569,33 @@ class DieMonitoringService
             'location' => $data['to_location'] ?? 'MTN Dies',
             'ppm_alert_status' => 'transferred_to_mtn',
         ]);
+
+        // Sync transfer to all dies with the same group_name
+        if ($die->group_name) {
+            // Only transfer dies that are at red_alerted or schedule_approved stage
+            $eligibleStatuses = [
+                'red_alerted',
+                'lot_date_set',
+                'ppm_scheduled',
+                'schedule_approved',
+            ];
+
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->whereIn('ppm_alert_status', $eligibleStatuses)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update([
+                    'transfer_from_location' => $member->location ?? $data['from_location'] ?? 'Production',
+                    'transfer_to_location' => $data['to_location'] ?? 'MTN Dies',
+                    'transferred_by' => $data['transferred_by'] ?? auth()->user()?->name,
+                    'transferred_at' => now(),
+                    'location' => $data['to_location'] ?? 'MTN Dies',
+                    'ppm_alert_status' => 'transferred_to_mtn',
+                ]);
+            }
+        }
 
         // Send notification
         $this->sendWorkflowNotification($die, 'transferred_to_mtn', $data['transferred_by'] ?? null);
@@ -473,6 +632,45 @@ class DieMonitoringService
             'last_lot_date_set_by' => null,
         ]);
 
+        // Sync transfer back (Red→Green) to all dies with the same group_name
+        if ($die->group_name) {
+            $eligibleStatuses = [
+                'ppm_completed',
+                'transferred_to_mtn',
+                'ppm_in_progress',
+                'additional_repair',
+            ];
+
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->whereIn('ppm_alert_status', $eligibleStatuses)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update([
+                    'location' => $data['to_location'] ?? $member->transfer_from_location ?? 'Production',
+                    'returned_to_production_at' => now(),
+                    'ppm_alert_status' => null,
+                    'ppm_total_days' => $member->red_alerted_at
+                        ? (int) $member->red_alerted_at->diffInWeekdays(now())
+                        : null,
+                    'red_alerted_at' => null,
+                    'ppm_started_at' => null,
+                    'ppm_finished_at' => null,
+                    'transferred_at' => null,
+                    'transferred_by' => null,
+                    'transfer_from_location' => null,
+                    'transfer_to_location' => null,
+                    'ppm_scheduled_date' => null,
+                    'ppm_scheduled_by' => null,
+                    'schedule_approved_at' => null,
+                    'schedule_approved_by' => null,
+                    'last_lot_date' => null,
+                    'last_lot_date_set_by' => null,
+                ]);
+            }
+        }
+
         // Send notification
         $this->sendWorkflowNotification($die, 'transferred_back');
     }
@@ -486,6 +684,14 @@ class DieMonitoringService
         $die->update([
             'ppm_alert_status' => 'additional_repair',
         ]);
+
+        // Sync additional repair to all dies with the same group_name
+        if ($die->group_name) {
+            DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->where('ppm_alert_status', 'ppm_in_progress')
+                ->update(['ppm_alert_status' => 'additional_repair']);
+        }
 
         // Send notification
         $this->sendWorkflowNotification($die, 'additional_repair');
@@ -806,15 +1012,17 @@ class DieMonitoringService
      */
     public function schedulePpmWithRemark(DieModel $die, array $data): void
     {
-        $die->update([
+        $scheduleData = [
             'ppm_alert_status' => 'ppm_scheduled',
             'ppm_scheduled_date' => $data['scheduled_date'] ?? null,
             'ppm_scheduled_by' => $data['pic'] ?? auth()->user()?->name,
             'schedule_remark' => $data['schedule_remark'] ?? null,
-            'schedule_change_reason' => null, // clear previous change reason
+            'schedule_change_reason' => null,
             'schedule_cancelled_at' => null,
             'schedule_cancelled_by' => null,
-        ]);
+        ];
+
+        $die->update($scheduleData);
 
         if (!empty($data['scheduled_date']) && empty($data['skip_schedule_record'])) {
             $die->ppmSchedules()->create([
@@ -825,6 +1033,28 @@ class DieMonitoringService
                 'pic' => $data['pic'] ?? null,
                 'notes' => $data['schedule_remark'] ?? 'Scheduled after Orange Alert',
             ]);
+        }
+
+        // Sync schedule to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update($scheduleData);
+
+                if (!empty($data['scheduled_date']) && empty($data['skip_schedule_record'])) {
+                    $member->ppmSchedules()->create([
+                        'year' => \Carbon\Carbon::parse($data['scheduled_date'])->year,
+                        'month' => \Carbon\Carbon::parse($data['scheduled_date'])->month,
+                        'week' => \Carbon\Carbon::parse($data['scheduled_date'])->weekOfMonth,
+                        'plan_week' => $data['plan_week'] ?? null,
+                        'pic' => $data['pic'] ?? null,
+                        'notes' => $data['schedule_remark'] ?? 'Scheduled after Orange Alert (synced from group)',
+                    ]);
+                }
+            }
         }
 
         $this->sendWorkflowNotification($die, 'ppm_scheduled', $data['pic'] ?? null, [

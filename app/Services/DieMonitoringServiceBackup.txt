@@ -126,8 +126,11 @@ class DieMonitoringService
      */
     public function getDies(array $filters = [], int $perPage = 15)
     {
-        $query = DieModel::with(['machineModel.tonnageStandard', 'customer'])
-            ->active();
+        $query = DieModel::with([
+            'machineModel.tonnageStandard',
+            'customer',
+            'latestProductionLog',
+        ])->active();
 
         // Filter by customer
         if (!empty($filters['customer_id'])) {
@@ -412,6 +415,26 @@ class DieMonitoringService
         }
 
         $die->update($updateData);
+
+        // Sync Last LOT Date to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $memberUpdateData = [
+                    'last_lot_date' => $data['last_lot_date'],
+                    'last_lot_date_set_by' => $data['set_by'] ?? auth()->user()?->name,
+                ];
+
+                if (!in_array($member->ppm_alert_status, $advancedStatuses)) {
+                    $memberUpdateData['ppm_alert_status'] = 'lot_date_set';
+                }
+
+                $member->update($memberUpdateData);
+            }
+        }
 
         // Send notification
         $this->sendWorkflowNotification($die, 'lot_date_set', $data['set_by'] ?? null, [

@@ -205,8 +205,7 @@ export default function DieShow({ auth, die }) {
         }
     };
 
-    // Jika accumulation_stroke masih 0, tampilkan last_stroke sebagai gantinya
-    const displayStroke = die.accumulation_stroke || die.last_stroke || 0;
+    const displayStroke = die.accumulation_stroke || 0;
     const displayPercentage = die.standard_stroke > 0
         ? Number(((displayStroke / die.standard_stroke) * 100).toFixed(1))
         : 0;

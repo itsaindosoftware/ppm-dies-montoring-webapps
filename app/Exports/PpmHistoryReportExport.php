@@ -51,7 +51,7 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
 
     public function collection()
     {
-        $histories = PpmHistory::with(['die. customer', 'die.machineModel'])
+        $histories = PpmHistory::with(['die.customer', 'die.machineModel'])
             ->whereBetween('ppm_date', [$this->dateFrom, $this->dateTo])
             ->orderByDesc('ppm_date')
             ->get();
