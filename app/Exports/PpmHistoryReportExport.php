@@ -40,7 +40,13 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
             'Part Name',
             'Customer',
             'Model',
-            'PPM Process Type',
+            'Proses 1',
+            'Proses 2',
+            'Proses 3',
+            'Proses 4',
+            'Proses 5',
+            'Proses 6',
+            'Proses 7',
             'Qty Dies',
             'Std Stroke',
             'Stroke at PPM',
@@ -64,35 +70,25 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
         $index = 0;
 
         foreach ($histories as $history) {
-            $dieProcesses = $history->die?->dieProcesses ?? collect();
-
-            if ($dieProcesses->count() > 1) {
-                // Check if this PpmHistory is linked to a specific die_process (multi-process PPM)
-                $linkedProcess = $dieProcesses->firstWhere('ppm_history_id', $history->id);
-
-                if ($linkedProcess) {
-                    // Multi-process PPM: each PpmHistory already represents one process
-                    $index++;
-                    $rows->push($this->buildRow($history, $index, $linkedProcess->process_type));
-                } else {
-                    // Single recordPpm with multiple die_processes: expand into rows per process
-                    foreach ($dieProcesses as $process) {
-                        $index++;
-                        $rows->push($this->buildRow($history, $index, $process->process_type));
-                    }
-                }
-            } else {
-                // Single process or no die_processes
-                $index++;
-                $rows->push($this->buildRow($history, $index, $history->process_type));
-            }
+            $index++;
+            $rows->push($this->buildRow($history, $index));
         }
 
         return $rows;
     }
 
-    protected function buildRow(PpmHistory $history, int $index, ?string $processType): array
+    protected function buildRow(PpmHistory $history, int $index): array
     {
+        // Get die processes ordered by process_order, fill up to 7 slots
+        $dieProcesses = $history->die?->dieProcesses?->sortBy('process_order')->values() ?? collect();
+        $processSlots = [];
+        for ($i = 0; $i < 7; $i++) {
+            $proc = $dieProcesses[$i] ?? null;
+            $processSlots[] = $proc
+                ? ucwords(str_replace('_', ' + ', $proc->process_type))
+                : '-';
+        }
+
         return [
             'no' => $index,
             'ppm_date' => $history->ppm_date->format('d-M-Y'),
@@ -101,7 +97,13 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
             'part_name' => $history->die?->part_name,
             'customer' => $history->die?->customer?->code,
             'model' => $history->die?->machineModel?->code,
-            'ppm_process_type' => $processType ? ucwords(str_replace('_', ' ', $processType)) : null,
+            'proses_1' => $processSlots[0],
+            'proses_2' => $processSlots[1],
+            'proses_3' => $processSlots[2],
+            'proses_4' => $processSlots[3],
+            'proses_5' => $processSlots[4],
+            'proses_6' => $processSlots[5],
+            'proses_7' => $processSlots[6],
             'qty_dies' => $history->die?->qty_die,
             'std_stroke' => $history->die?->standard_stroke ? number_format($history->die->standard_stroke) : null,
             'stroke_at_ppm' => $history->stroke_at_ppm ? number_format($history->stroke_at_ppm) : null,
@@ -117,7 +119,7 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
     public function styles(Worksheet $sheet): array
     {
         $lastRow = $sheet->getHighestRow();
-        $lastCol = 'Q';
+        $lastCol = 'W';
 
         $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
