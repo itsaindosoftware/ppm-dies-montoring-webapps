@@ -35,10 +35,20 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
         return [
             'No',
             'PPM Date',
+            'Dies Group',
             'Part Number',
             'Part Name',
             'Customer',
             'Model',
+            'Proses 1',
+            'Proses 2',
+            'Proses 3',
+            'Proses 4',
+            'Proses 5',
+            'Proses 6',
+            'Proses 7',
+            'Qty Dies',
+            'Std Stroke',
             'Stroke at PPM',
             'Maintenance Type',
             'PIC',
@@ -51,35 +61,67 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
 
     public function collection()
     {
-        $histories = PpmHistory::with(['die.customer', 'die.machineModel'])
+        $histories = PpmHistory::with(['die.customer', 'die.machineModel', 'die.dieProcesses'])
             ->whereBetween('ppm_date', [$this->dateFrom, $this->dateTo])
             ->orderByDesc('ppm_date')
             ->get();
 
-        return $histories->map(function ($history, $index) {
-            return [
-                'no' => $index + 1,
-                'ppm_date' => $history->ppm_date->format('d-M-Y'),
-                'part_number' => $history->die?->part_number,
-                'part_name' => $history->die?->part_name,
-                'customer' => $history->die?->customer?->code,
-                'model' => $history->die?->machineModel?->code,
-                'stroke_at_ppm' => $history->stroke_at_ppm,
-                'maintenance_type' => ucfirst($history->maintenance_type),
-                'pic' => $history->pic,
-                'status' => ucfirst($history->status),
-                'work_performed' => $history->work_performed,
-                'checked_by' => $history->checked_by,
-                'approved_by' => $history->approved_by,
-            ];
-        });
+        $rows = collect();
+        $index = 0;
+
+        foreach ($histories as $history) {
+            $index++;
+            $rows->push($this->buildRow($history, $index));
+        }
+
+        return $rows;
+    }
+
+    protected function buildRow(PpmHistory $history, int $index): array
+    {
+        // Get die processes ordered by process_order, fill up to 7 slots
+        $dieProcesses = $history->die?->dieProcesses?->sortBy('process_order')->values() ?? collect();
+        $processSlots = [];
+        for ($i = 0; $i < 7; $i++) {
+            $proc = $dieProcesses[$i] ?? null;
+            $processSlots[] = $proc
+                ? ucwords(str_replace('_', ' + ', $proc->process_type))
+                : '-';
+        }
+
+        return [
+            'no' => $index,
+            'ppm_date' => $history->ppm_date->format('d-M-Y'),
+            'dies_group' => $history->die?->group_name,
+            'part_number' => $history->die?->part_number,
+            'part_name' => $history->die?->part_name,
+            'customer' => $history->die?->customer?->code,
+            'model' => $history->die?->machineModel?->code,
+            'proses_1' => $processSlots[0],
+            'proses_2' => $processSlots[1],
+            'proses_3' => $processSlots[2],
+            'proses_4' => $processSlots[3],
+            'proses_5' => $processSlots[4],
+            'proses_6' => $processSlots[5],
+            'proses_7' => $processSlots[6],
+            'qty_dies' => $history->die?->qty_die,
+            'std_stroke' => $history->die?->standard_stroke ? number_format($history->die->standard_stroke) : null,
+            'stroke_at_ppm' => $history->stroke_at_ppm ? number_format($history->stroke_at_ppm) : null,
+            'maintenance_type' => ucfirst($history->maintenance_type),
+            'pic' => $history->pic,
+            'status' => ucfirst($history->status),
+            'work_performed' => $history->work_performed,
+            'checked_by' => $history->checked_by,
+            'approved_by' => $history->approved_by,
+        ];
     }
 
     public function styles(Worksheet $sheet): array
     {
         $lastRow = $sheet->getHighestRow();
+        $lastCol = 'W';
 
-        $sheet->getStyle('A1:M1')->applyFromArray([
+        $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -94,7 +136,7 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
             ],
         ]);
 
-        $sheet->getStyle("A2:M{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A2:{$lastCol}{$lastRow}")->applyFromArray([
             'borders' => [
                 'allBorders' => ['borderStyle' => Border::BORDER_THIN],
             ],

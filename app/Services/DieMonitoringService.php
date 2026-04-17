@@ -356,11 +356,13 @@ class DieMonitoringService
      */
     public function schedulePpm(DieModel $die, array $data): void
     {
-        $die->update([
+        $scheduleData = [
             'ppm_alert_status' => 'ppm_scheduled',
             'ppm_scheduled_date' => $data['scheduled_date'] ?? null,
             'ppm_scheduled_by' => $data['pic'] ?? auth()->user()?->name,
-        ]);
+        ];
+
+        $die->update($scheduleData);
 
         // Create a PPM schedule record (skip if called from calendar which manages its own record)
         if (!empty($data['scheduled_date']) && empty($data['skip_schedule_record'])) {
@@ -372,6 +374,28 @@ class DieMonitoringService
                 'pic' => $data['pic'] ?? null,
                 'notes' => $data['notes'] ?? 'Scheduled after Orange Alert',
             ]);
+        }
+
+        // Sync schedule to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update($scheduleData);
+
+                if (!empty($data['scheduled_date']) && empty($data['skip_schedule_record'])) {
+                    $member->ppmSchedules()->create([
+                        'year' => Carbon::parse($data['scheduled_date'])->year,
+                        'month' => Carbon::parse($data['scheduled_date'])->month,
+                        'week' => Carbon::parse($data['scheduled_date'])->weekOfMonth,
+                        'plan_week' => $data['plan_week'] ?? null,
+                        'pic' => $data['pic'] ?? null,
+                        'notes' => $data['notes'] ?? 'Scheduled after Orange Alert (synced from group)',
+                    ]);
+                }
+            }
         }
 
         // Send notification
@@ -954,6 +978,77 @@ class DieMonitoringService
                 'completed_by' => $data['pic'],
             ]);
 
+            // Sync process completion to all dies with the same group_name
+            if ($die->group_name) {
+                $groupMembers = DieModel::where('group_name', $die->group_name)
+                    ->where('id', '!=', $die->id)
+                    ->whereIn('ppm_alert_status', ['ppm_in_progress', 'additional_repair'])
+                    ->get();
+
+                foreach ($groupMembers as $member) {
+                    $memberProcess = $member->dieProcesses()
+                        ->where('process_type', $process->process_type)
+                        ->where('process_order', $process->process_order)
+                        ->whereIn('ppm_status', ['pending', 'in_progress'])
+                        ->first();
+
+                    if ($memberProcess) {
+                        $member->load(['machineModel.tonnageStandard', 'customer']);
+                        $memberPpmCount = ($member->ppm_count ?? 0) + 1;
+
+                        // Create PPM history for group member
+                        $memberHistory = PpmHistory::create([
+                            'die_id' => $member->id,
+                            'ppm_date' => $data['ppm_date'],
+                            'stroke_at_ppm' => $member->accumulation_stroke,
+                            'ppm_number' => $memberPpmCount,
+                            'process_type' => $process->process_type,
+                            'checklist_results' => $data['checklist_results'] ?? null,
+                            'pic' => $data['pic'],
+                            'status' => 'done',
+                            'maintenance_type' => $data['maintenance_type'] ?? 'routine',
+                            'work_performed' => $data['work_performed'] ?? null,
+                            'parts_replaced' => $data['parts_replaced'] ?? null,
+                            'findings' => $data['findings'] ?? null,
+                            'recommendations' => $data['recommendations'] ?? null,
+                            'checked_by' => $data['checked_by'] ?? null,
+                            'approved_by' => $data['approved_by'] ?? null,
+                            'created_by' => auth()->id(),
+                        ]);
+
+                        // Mark member process as completed
+                        $memberProcess->update([
+                            'ppm_status' => 'completed',
+                            'ppm_completed_at' => now(),
+                            'ppm_history_id' => $memberHistory->id,
+                            'completed_by' => $data['pic'],
+                        ]);
+
+                        // Check if ALL processes for this member are now completed
+                        $member->refresh();
+                        $memberProgress = $member->ppm_process_progress;
+
+                        if ($memberProgress['all_completed']) {
+                            $member->update([
+                                'ppm_count' => $memberPpmCount,
+                                'stroke_at_last_ppm' => 0,
+                                'last_ppm_date' => $data['ppm_date'],
+                                'ppm_alert_status' => 'ppm_completed',
+                                'ppm_finished_at' => now(),
+                                'ppm_total_days' => $member->red_alerted_at
+                                    ? (int) $member->red_alerted_at->diffInWeekdays(now())
+                                    : null,
+                                'accumulation_stroke' => 0,
+                                'last_stroke' => 0,
+                            ]);
+
+                            $this->sendPpmCompletedNotification($member, $memberHistory);
+                            $this->transferBackToProduction($member);
+                        }
+                    }
+                }
+            }
+
             // Check if ALL processes for this die are now completed
             $die->refresh();
             $progress = $die->ppm_process_progress;
@@ -1000,6 +1095,30 @@ class DieMonitoringService
 
         $die = $process->die;
         $die->loadMissing(['customer', 'machineModel']);
+
+        // Sync process start to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->whereIn('ppm_alert_status', ['ppm_in_progress', 'additional_repair'])
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $memberProcess = $member->dieProcesses()
+                    ->where('process_type', $process->process_type)
+                    ->where('process_order', $process->process_order)
+                    ->where('ppm_status', 'pending')
+                    ->first();
+
+                if ($memberProcess) {
+                    $memberProcess->update([
+                        'ppm_status' => 'in_progress',
+                        'ppm_started_at' => now(),
+                    ]);
+                }
+            }
+        }
+
         $this->sendWorkflowNotification($die, 'process_started', auth()->user()?->name, [
             'process_type' => $process->process_label,
         ]);
@@ -1068,8 +1187,7 @@ class DieMonitoringService
      */
     public function cancelPpmSchedule(DieModel $die, array $data): void
     {
-        $die->update([
-            'ppm_alert_status' => $die->ppm_status === 'red' ? 'red_alerted' : 'orange_alerted',
+        $cancelData = [
             'schedule_change_reason' => $data['reason'],
             'schedule_cancelled_at' => now(),
             'schedule_cancelled_by' => auth()->user()?->name,
@@ -1077,7 +1195,24 @@ class DieMonitoringService
             'ppm_scheduled_by' => null,
             'schedule_approved_at' => null,
             'schedule_approved_by' => null,
-        ]);
+        ];
+
+        $die->update(array_merge($cancelData, [
+            'ppm_alert_status' => $die->ppm_status === 'red' ? 'red_alerted' : 'orange_alerted',
+        ]));
+
+        // Sync cancel to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update(array_merge($cancelData, [
+                    'ppm_alert_status' => $member->ppm_status === 'red' ? 'red_alerted' : 'orange_alerted',
+                ]));
+            }
+        }
 
         $this->sendWorkflowNotification($die, 'schedule_cancelled', auth()->user()?->name, [
             'reason' => $data['reason'],
@@ -1089,7 +1224,7 @@ class DieMonitoringService
      */
     public function reschedulePpm(DieModel $die, array $data): void
     {
-        $die->update([
+        $rescheduleData = [
             'ppm_scheduled_date' => $data['scheduled_date'],
             'ppm_scheduled_by' => $data['pic'] ?? auth()->user()?->name,
             'schedule_change_reason' => $data['reason'] ?? null,
@@ -1097,7 +1232,20 @@ class DieMonitoringService
             'schedule_approved_at' => null, // Needs re-approval
             'schedule_approved_by' => null,
             'ppm_alert_status' => 'ppm_scheduled', // Reset to scheduled
-        ]);
+        ];
+
+        $die->update($rescheduleData);
+
+        // Sync reschedule to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update($rescheduleData);
+            }
+        }
 
         $this->sendWorkflowNotification($die, 'schedule_changed', $data['pic'] ?? null, [
             'new_date' => $data['scheduled_date'],

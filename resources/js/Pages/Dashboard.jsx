@@ -39,7 +39,7 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                 {/* Row 1: Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <StatsCard
-                        title="Total Dies"
+                        title="Total Part Number"
                         value={stats?.total || 0}
                         icon="fa-wrench"
                         color="blue"

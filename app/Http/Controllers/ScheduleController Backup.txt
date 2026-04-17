@@ -29,6 +29,22 @@ class ScheduleController extends Controller
         $year = $request->get('year', now()->year);
         $customerId = $request->get('customer_id');
         $tonnageId = $request->get('tonnage_id');
+        $month = $request->get('month');
+        $date = $request->get('date');
+
+        $month = is_numeric($month) ? (int) $month : null;
+        if ($month !== null && ($month < 1 || $month > 12)) {
+            $month = null;
+        }
+
+        $selectedDate = null;
+        if (!empty($date)) {
+            try {
+                $selectedDate = Carbon::parse($date)->toDateString();
+            } catch (\Throwable $e) {
+                $selectedDate = null;
+            }
+        }
 
         // Get filters data
         $customers = Customer::active()->get(['id', 'code', 'name']);
@@ -38,8 +54,28 @@ class ScheduleController extends Controller
         $query = DieModel::with([
             'machineModel.tonnageStandard',
             'customer',
-            'ppmSchedules' => fn($q) => $q->where('year', $year),
-            'ppmHistories' => fn($q) => $q->whereYear('ppm_date', $year),
+            'ppmSchedules' => function ($q) use ($year, $month, $selectedDate) {
+                $q->where('year', $year);
+
+                if ($month) {
+                    $q->where('month', $month);
+                }
+
+                if ($selectedDate) {
+                    $q->whereDate('ppm_date', $selectedDate);
+                }
+            },
+            'ppmHistories' => function ($q) use ($year, $month, $selectedDate) {
+                $q->whereYear('ppm_date', $year);
+
+                if ($month) {
+                    $q->whereMonth('ppm_date', $month);
+                }
+
+                if ($selectedDate) {
+                    $q->whereDate('ppm_date', $selectedDate);
+                }
+            },
         ])->active();
 
         if ($customerId) {
@@ -49,6 +85,32 @@ class ScheduleController extends Controller
         if ($tonnageId) {
             $query->whereHas('machineModel', function ($q) use ($tonnageId) {
                 $q->where('tonnage_standard_id', $tonnageId);
+            });
+        }
+
+        if ($month || $selectedDate) {
+            $query->where(function ($q) use ($year, $month, $selectedDate) {
+                $q->whereHas('ppmSchedules', function ($scheduleQuery) use ($year, $month, $selectedDate) {
+                    $scheduleQuery->where('year', $year);
+
+                    if ($month) {
+                        $scheduleQuery->where('month', $month);
+                    }
+
+                    if ($selectedDate) {
+                        $scheduleQuery->whereDate('ppm_date', $selectedDate);
+                    }
+                })->orWhereHas('ppmHistories', function ($historyQuery) use ($year, $month, $selectedDate) {
+                    $historyQuery->whereYear('ppm_date', $year);
+
+                    if ($month) {
+                        $historyQuery->whereMonth('ppm_date', $month);
+                    }
+
+                    if ($selectedDate) {
+                        $historyQuery->whereDate('ppm_date', $selectedDate);
+                    }
+                });
             });
         }
 
@@ -65,6 +127,8 @@ class ScheduleController extends Controller
             'filters' => [
                 'customer_id' => $customerId,
                 'tonnage_id' => $tonnageId,
+                'month' => $month,
+                'date' => $selectedDate,
             ],
         ]);
     }
@@ -75,6 +139,9 @@ class ScheduleController extends Controller
     protected function transformToScheduleData($dies, $year): array
     {
         $grouped = [];
+        // Track which group_names already have a representative for needs_scheduling
+        // So only 1 die per group shows as "needs scheduling" on the calendar
+        $scheduledGroupNames = [];
 
         foreach ($dies as $die) {
             $customerCode = $die->customer?->code ?? 'Unknown';
@@ -140,7 +207,7 @@ class ScheduleController extends Controller
                 'total_die' => $die->qty_die,
                 'accumulation_stroke' => $die->accumulation_stroke,
                 'last_stroke' => $die->last_stroke,
-                'control_stroke' => $die->control_stroke ??  $die->standard_stroke,
+                'control_stroke' => $die->control_stroke ?? $die->standard_stroke,
                 'standard_stroke' => $die->standard_stroke,
                 'stroke_percentage' => $die->stroke_percentage,
                 'ppm_status' => $die->ppm_status,
@@ -160,7 +227,21 @@ class ScheduleController extends Controller
                 'ppm_scheduled_date' => $die->ppm_scheduled_date?->format('d-M-Y'),
                 'ppm_scheduled_by' => $die->ppm_scheduled_by,
                 'schedule_approved_at' => $die->schedule_approved_at?->format('d-M-Y H:i'),
-                'needs_scheduling' => $die->last_lot_date && !$die->ppm_scheduled_date && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]),
+                'group_name' => $die->group_name,
+                'needs_scheduling' => (function () use ($die, &$scheduledGroupNames) {
+                    $needs = $die->last_lot_date && !$die->ppm_scheduled_date
+                        && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]);
+
+                    // Only show 1 die per group_name as needs_scheduling
+                    if ($needs && $die->group_name) {
+                        if (in_array($die->group_name, $scheduledGroupNames)) {
+                            return false; // Another group member already shown
+                        }
+                        $scheduledGroupNames[] = $die->group_name;
+                    }
+
+                    return $needs;
+                })(),
             ];
         }
 
@@ -207,6 +288,25 @@ class ScheduleController extends Controller
                     'pic' => auth()->user()?->name,
                     'skip_schedule_record' => true, // Calendar manages its own PpmSchedule record below
                 ]);
+
+                // Also create calendar PpmSchedule records for group members
+                if ($die->group_name) {
+                    $groupMembers = DieModel::where('group_name', $die->group_name)
+                        ->where('id', '!=', $die->id)
+                        ->get();
+
+                    foreach ($groupMembers as $member) {
+                        PpmSchedule::updateOrCreate(
+                            [
+                                'die_id' => $member->id,
+                                'year' => $validated['year'],
+                                'month' => $validated['month'],
+                                'week' => $validated['week'],
+                            ],
+                            $updateFields
+                        );
+                    }
+                }
             }
         }
 
