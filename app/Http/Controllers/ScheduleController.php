@@ -139,6 +139,9 @@ class ScheduleController extends Controller
     protected function transformToScheduleData($dies, $year): array
     {
         $grouped = [];
+        // Track which group_names already have a representative for needs_scheduling
+        // So only 1 die per group shows as "needs scheduling" on the calendar
+        $scheduledGroupNames = [];
 
         foreach ($dies as $die) {
             $customerCode = $die->customer?->code ?? 'Unknown';
@@ -224,7 +227,21 @@ class ScheduleController extends Controller
                 'ppm_scheduled_date' => $die->ppm_scheduled_date?->format('d-M-Y'),
                 'ppm_scheduled_by' => $die->ppm_scheduled_by,
                 'schedule_approved_at' => $die->schedule_approved_at?->format('d-M-Y H:i'),
-                'needs_scheduling' => $die->last_lot_date && !$die->ppm_scheduled_date && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]),
+                'group_name' => $die->group_name,
+                'needs_scheduling' => (function () use ($die, &$scheduledGroupNames) {
+                    $needs = $die->last_lot_date && !$die->ppm_scheduled_date
+                        && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]);
+
+                    // Only show 1 die per group_name as needs_scheduling
+                    if ($needs && $die->group_name) {
+                        if (in_array($die->group_name, $scheduledGroupNames)) {
+                            return false; // Another group member already shown
+                        }
+                        $scheduledGroupNames[] = $die->group_name;
+                    }
+
+                    return $needs;
+                })(),
             ];
         }
 
@@ -271,6 +288,25 @@ class ScheduleController extends Controller
                     'pic' => auth()->user()?->name,
                     'skip_schedule_record' => true, // Calendar manages its own PpmSchedule record below
                 ]);
+
+                // Also create calendar PpmSchedule records for group members
+                if ($die->group_name) {
+                    $groupMembers = DieModel::where('group_name', $die->group_name)
+                        ->where('id', '!=', $die->id)
+                        ->get();
+
+                    foreach ($groupMembers as $member) {
+                        PpmSchedule::updateOrCreate(
+                            [
+                                'die_id' => $member->id,
+                                'year' => $validated['year'],
+                                'month' => $validated['month'],
+                                'week' => $validated['week'],
+                            ],
+                            $updateFields
+                        );
+                    }
+                }
             }
         }
 

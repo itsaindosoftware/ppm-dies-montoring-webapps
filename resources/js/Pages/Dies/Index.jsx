@@ -243,15 +243,15 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
             });
         }
 
-        // Set Last LOT Date: orange/red dies not yet transferred (PPIC role)
+        // Set Next LOT Date: orange/red dies not yet transferred (PPIC role)
         const lotDateEligible = selectedDiesData.filter(d =>
             ['orange', 'red'].includes(d.ppm_status) &&
             !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(d.ppm_alert_status)
         );
         if (lotDateEligible.length > 0 && ['admin', 'ppic'].includes(auth.user.role)) {
             actions.push({
-                key: 'set-last-lot-date',
-                label: `📅 Set Last LOT Date (${lotDateEligible.length})`,
+                key: 'set-next-lot-date',
+                label: `📅 Set Next LOT Date (${lotDateEligible.length})`,
                 color: 'bg-purple-600 hover:bg-purple-700',
                 count: lotDateEligible.length,
             });
@@ -280,7 +280,7 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                     return selectedDiesData.filter(d =>
                         ['transferred_to_mtn', 'ppm_in_progress', 'additional_repair'].includes(d.ppm_alert_status)
                     ).map(d => d.id);
-                case 'set-last-lot-date':
+                case 'set-next-lot-date':
                     return selectedDiesData.filter(d =>
                         ['orange', 'red'].includes(d.ppm_status) &&
                         !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(d.ppm_alert_status)
@@ -294,7 +294,7 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
         if (eligibleIds.length === 0) return;
 
         // For Set Last LOT Date, open the LOT date modal
-        if (actionKey === 'set-last-lot-date') {
+        if (actionKey === 'set-next-lot-date') {
             setBatchLotDateData({
                 last_lot_date: new Date().toISOString().split('T')[0],
                 set_by: auth.user.name,
@@ -1301,7 +1301,7 @@ export default function DiesIndex({ auth, dies, filters, customers, machineModel
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
                             <div className="bg-purple-600 text-white px-6 py-4 flex items-center justify-between">
-                                <h3 className="text-lg font-bold">📅 Batch Set Last LOT Date</h3>
+                                <h3 className="text-lg font-bold">📅 Batch Set Next LOT Date</h3>
                                 <button onClick={() => setShowBatchLotDateModal(false)} className="text-white/80 hover:text-white">
                                     <i className="fas fa-times text-lg"></i>
                                 </button>

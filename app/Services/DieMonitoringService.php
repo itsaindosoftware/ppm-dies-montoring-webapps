@@ -356,11 +356,13 @@ class DieMonitoringService
      */
     public function schedulePpm(DieModel $die, array $data): void
     {
-        $die->update([
+        $scheduleData = [
             'ppm_alert_status' => 'ppm_scheduled',
             'ppm_scheduled_date' => $data['scheduled_date'] ?? null,
             'ppm_scheduled_by' => $data['pic'] ?? auth()->user()?->name,
-        ]);
+        ];
+
+        $die->update($scheduleData);
 
         // Create a PPM schedule record (skip if called from calendar which manages its own record)
         if (!empty($data['scheduled_date']) && empty($data['skip_schedule_record'])) {
@@ -372,6 +374,28 @@ class DieMonitoringService
                 'pic' => $data['pic'] ?? null,
                 'notes' => $data['notes'] ?? 'Scheduled after Orange Alert',
             ]);
+        }
+
+        // Sync schedule to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update($scheduleData);
+
+                if (!empty($data['scheduled_date']) && empty($data['skip_schedule_record'])) {
+                    $member->ppmSchedules()->create([
+                        'year' => Carbon::parse($data['scheduled_date'])->year,
+                        'month' => Carbon::parse($data['scheduled_date'])->month,
+                        'week' => Carbon::parse($data['scheduled_date'])->weekOfMonth,
+                        'plan_week' => $data['plan_week'] ?? null,
+                        'pic' => $data['pic'] ?? null,
+                        'notes' => $data['notes'] ?? 'Scheduled after Orange Alert (synced from group)',
+                    ]);
+                }
+            }
         }
 
         // Send notification
@@ -1068,8 +1092,7 @@ class DieMonitoringService
      */
     public function cancelPpmSchedule(DieModel $die, array $data): void
     {
-        $die->update([
-            'ppm_alert_status' => $die->ppm_status === 'red' ? 'red_alerted' : 'orange_alerted',
+        $cancelData = [
             'schedule_change_reason' => $data['reason'],
             'schedule_cancelled_at' => now(),
             'schedule_cancelled_by' => auth()->user()?->name,
@@ -1077,7 +1100,24 @@ class DieMonitoringService
             'ppm_scheduled_by' => null,
             'schedule_approved_at' => null,
             'schedule_approved_by' => null,
-        ]);
+        ];
+
+        $die->update(array_merge($cancelData, [
+            'ppm_alert_status' => $die->ppm_status === 'red' ? 'red_alerted' : 'orange_alerted',
+        ]));
+
+        // Sync cancel to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update(array_merge($cancelData, [
+                    'ppm_alert_status' => $member->ppm_status === 'red' ? 'red_alerted' : 'orange_alerted',
+                ]));
+            }
+        }
 
         $this->sendWorkflowNotification($die, 'schedule_cancelled', auth()->user()?->name, [
             'reason' => $data['reason'],
@@ -1089,7 +1129,7 @@ class DieMonitoringService
      */
     public function reschedulePpm(DieModel $die, array $data): void
     {
-        $die->update([
+        $rescheduleData = [
             'ppm_scheduled_date' => $data['scheduled_date'],
             'ppm_scheduled_by' => $data['pic'] ?? auth()->user()?->name,
             'schedule_change_reason' => $data['reason'] ?? null,
@@ -1097,7 +1137,20 @@ class DieMonitoringService
             'schedule_approved_at' => null, // Needs re-approval
             'schedule_approved_by' => null,
             'ppm_alert_status' => 'ppm_scheduled', // Reset to scheduled
-        ]);
+        ];
+
+        $die->update($rescheduleData);
+
+        // Sync reschedule to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update($rescheduleData);
+            }
+        }
 
         $this->sendWorkflowNotification($die, 'schedule_changed', $data['pic'] ?? null, [
             'new_date' => $data['scheduled_date'],
