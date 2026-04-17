@@ -644,7 +644,7 @@ export default function DieShow({ auth, die }) {
                             </div>
                         )}
 
-                        {/* Multi-Process PPM Progress Card */}
+                        {/* Multi-Process PPM Progress Card, kalau sudah isi start ppm processing, muncul ini */}
                         {die.die_processes && die.die_processes.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">

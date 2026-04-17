@@ -978,6 +978,77 @@ class DieMonitoringService
                 'completed_by' => $data['pic'],
             ]);
 
+            // Sync process completion to all dies with the same group_name
+            if ($die->group_name) {
+                $groupMembers = DieModel::where('group_name', $die->group_name)
+                    ->where('id', '!=', $die->id)
+                    ->whereIn('ppm_alert_status', ['ppm_in_progress', 'additional_repair'])
+                    ->get();
+
+                foreach ($groupMembers as $member) {
+                    $memberProcess = $member->dieProcesses()
+                        ->where('process_type', $process->process_type)
+                        ->where('process_order', $process->process_order)
+                        ->whereIn('ppm_status', ['pending', 'in_progress'])
+                        ->first();
+
+                    if ($memberProcess) {
+                        $member->load(['machineModel.tonnageStandard', 'customer']);
+                        $memberPpmCount = ($member->ppm_count ?? 0) + 1;
+
+                        // Create PPM history for group member
+                        $memberHistory = PpmHistory::create([
+                            'die_id' => $member->id,
+                            'ppm_date' => $data['ppm_date'],
+                            'stroke_at_ppm' => $member->accumulation_stroke,
+                            'ppm_number' => $memberPpmCount,
+                            'process_type' => $process->process_type,
+                            'checklist_results' => $data['checklist_results'] ?? null,
+                            'pic' => $data['pic'],
+                            'status' => 'done',
+                            'maintenance_type' => $data['maintenance_type'] ?? 'routine',
+                            'work_performed' => $data['work_performed'] ?? null,
+                            'parts_replaced' => $data['parts_replaced'] ?? null,
+                            'findings' => $data['findings'] ?? null,
+                            'recommendations' => $data['recommendations'] ?? null,
+                            'checked_by' => $data['checked_by'] ?? null,
+                            'approved_by' => $data['approved_by'] ?? null,
+                            'created_by' => auth()->id(),
+                        ]);
+
+                        // Mark member process as completed
+                        $memberProcess->update([
+                            'ppm_status' => 'completed',
+                            'ppm_completed_at' => now(),
+                            'ppm_history_id' => $memberHistory->id,
+                            'completed_by' => $data['pic'],
+                        ]);
+
+                        // Check if ALL processes for this member are now completed
+                        $member->refresh();
+                        $memberProgress = $member->ppm_process_progress;
+
+                        if ($memberProgress['all_completed']) {
+                            $member->update([
+                                'ppm_count' => $memberPpmCount,
+                                'stroke_at_last_ppm' => 0,
+                                'last_ppm_date' => $data['ppm_date'],
+                                'ppm_alert_status' => 'ppm_completed',
+                                'ppm_finished_at' => now(),
+                                'ppm_total_days' => $member->red_alerted_at
+                                    ? (int) $member->red_alerted_at->diffInWeekdays(now())
+                                    : null,
+                                'accumulation_stroke' => 0,
+                                'last_stroke' => 0,
+                            ]);
+
+                            $this->sendPpmCompletedNotification($member, $memberHistory);
+                            $this->transferBackToProduction($member);
+                        }
+                    }
+                }
+            }
+
             // Check if ALL processes for this die are now completed
             $die->refresh();
             $progress = $die->ppm_process_progress;
@@ -1024,6 +1095,30 @@ class DieMonitoringService
 
         $die = $process->die;
         $die->loadMissing(['customer', 'machineModel']);
+
+        // Sync process start to all dies with the same group_name
+        if ($die->group_name) {
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->whereIn('ppm_alert_status', ['ppm_in_progress', 'additional_repair'])
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $memberProcess = $member->dieProcesses()
+                    ->where('process_type', $process->process_type)
+                    ->where('process_order', $process->process_order)
+                    ->where('ppm_status', 'pending')
+                    ->first();
+
+                if ($memberProcess) {
+                    $memberProcess->update([
+                        'ppm_status' => 'in_progress',
+                        'ppm_started_at' => now(),
+                    ]);
+                }
+            }
+        }
+
         $this->sendWorkflowNotification($die, 'process_started', auth()->user()?->name, [
             'process_type' => $process->process_label,
         ]);
