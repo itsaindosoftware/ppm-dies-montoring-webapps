@@ -15,11 +15,11 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 
--- Dumping database structure for ppm_dies_monitoring
-CREATE DATABASE IF NOT EXISTS `ppm_dies_monitoring` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
-USE `ppm_dies_monitoring`;
+-- Dumping database structure for ppm_dies_monitoring_april
+CREATE DATABASE IF NOT EXISTS `ppm_dies_monitoring_april` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `ppm_dies_monitoring_april`;
 
--- Dumping structure for table ppm_dies_monitoring.cache
+-- Dumping structure for table ppm_dies_monitoring_april.cache
 CREATE TABLE IF NOT EXISTS `cache` (
   `key` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `value` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -27,10 +27,10 @@ CREATE TABLE IF NOT EXISTS `cache` (
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.cache: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.cache: ~0 rows (approximately)
 DELETE FROM `cache`;
 
--- Dumping structure for table ppm_dies_monitoring.cache_locks
+-- Dumping structure for table ppm_dies_monitoring_april.cache_locks
 CREATE TABLE IF NOT EXISTS `cache_locks` (
   `key` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `owner` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -38,10 +38,10 @@ CREATE TABLE IF NOT EXISTS `cache_locks` (
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.cache_locks: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.cache_locks: ~0 rows (approximately)
 DELETE FROM `cache_locks`;
 
--- Dumping structure for table ppm_dies_monitoring.customers
+-- Dumping structure for table ppm_dies_monitoring_april.customers
 CREATE TABLE IF NOT EXISTS `customers` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   UNIQUE KEY `customers_code_unique` (`code`)
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.customers: ~7 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.customers: ~7 rows (approximately)
 DELETE FROM `customers`;
 INSERT INTO `customers` (`id`, `code`, `name`, `contact_person`, `email`, `phone`, `address`, `is_active`, `created_at`, `updated_at`) VALUES
 	(1, 'HMMI', 'Hyundai Motor Manufacturing Indonesia', NULL, NULL, NULL, NULL, 1, '2026-01-21 10:41:16', '2026-02-22 18:55:20'),
@@ -68,7 +68,7 @@ INSERT INTO `customers` (`id`, `code`, `name`, `contact_person`, `email`, `phone
 	(6, 'TMMIN', 'Toyota Motor Manufacturing Indonesia', NULL, NULL, NULL, NULL, 1, '2026-01-21 10:41:16', '2026-01-21 10:41:16'),
 	(7, 'ASI', 'Adyawinsa Stamping Induestries', NULL, NULL, NULL, NULL, 1, '2026-03-03 20:47:59', '2026-03-03 20:47:59');
 
--- Dumping structure for table ppm_dies_monitoring.dies
+-- Dumping structure for table ppm_dies_monitoring_april.dies
 CREATE TABLE IF NOT EXISTS `dies` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `part_number` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS `dies` (
   CONSTRAINT `dies_machine_model_id_foreign` FOREIGN KEY (`machine_model_id`) REFERENCES `machine_models` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1216 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.dies: ~314 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.dies: ~314 rows (approximately)
 DELETE FROM `dies`;
 INSERT INTO `dies` (`id`, `part_number`, `part_name`, `model`, `machine_model_id`, `customer_id`, `lot_size`, `ppm_standard`, `qty_die`, `dies_size`, `line`, `process_type`, `die_group`, `is_4lot_check`, `accumulate_related_parts`, `accumulation_stroke`, `ppm_count`, `stroke_at_last_ppm`, `last_stroke`, `control_stroke`, `last_ppm_date`, `location`, `status`, `ppm_alert_status`, `ppm_scheduled_date`, `ppm_scheduled_by`, `schedule_remark`, `schedule_change_reason`, `schedule_cancelled_at`, `schedule_cancelled_by`, `schedule_approved_at`, `schedule_approved_by`, `red_alerted_at`, `ppm_started_at`, `ppm_finished_at`, `returned_to_production_at`, `ppm_total_days`, `last_lot_date`, `last_lot_date_set_by`, `transferred_at`, `transferred_by`, `transfer_from_location`, `transfer_to_location`, `notes`, `mtn_remark`, `ppic_remark`, `created_at`, `updated_at`) VALUES
 	(901, '5211A428', 'BAR, FR END UPR, SIDE RH', '20QX', 9, 2, 600, 6000, 4, NULL, '800T', NULL, '52', 0, 0, 0, 0, 0, 13600, NULL, '2026-03-10', NULL, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-04-13 01:45:50', '2026-04-15 02:23:55'),
@@ -446,7 +446,7 @@ INSERT INTO `dies` (`id`, `part_number`, `part_name`, `model`, `machine_model_id
 	(1214, '63224-TSAA-K001-H1 (Blank)', 'BHD R, SIDE SILL', '2SJ/ 2SK', 32, 3, 600, 10000, 1, NULL, 'Progressive', NULL, '63224-TSAA-K001-H1', 0, 0, 0, 0, 0, 0, NULL, '2025-09-06', NULL, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-04-13 03:41:28', '2026-04-15 09:43:29'),
 	(1215, '71222-I6000 (RHD)', 'PILLAR-FR INR LWR,RH', NULL, 1, 1, 600, 6000, 4, NULL, '800T', NULL, '71222-I6000', 0, 0, 3356, 0, 0, 0, NULL, '2025-11-05', NULL, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-04-15 17:02:05', '2026-04-15 17:06:44');
 
--- Dumping structure for table ppm_dies_monitoring.die_processes
+-- Dumping structure for table ppm_dies_monitoring_april.die_processes
 CREATE TABLE IF NOT EXISTS `die_processes` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `die_id` bigint unsigned NOT NULL,
@@ -468,10 +468,10 @@ CREATE TABLE IF NOT EXISTS `die_processes` (
   CONSTRAINT `die_processes_ppm_history_id_foreign` FOREIGN KEY (`ppm_history_id`) REFERENCES `ppm_histories` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.die_processes: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.die_processes: ~0 rows (approximately)
 DELETE FROM `die_processes`;
 
--- Dumping structure for table ppm_dies_monitoring.failed_jobs
+-- Dumping structure for table ppm_dies_monitoring_april.failed_jobs
 CREATE TABLE IF NOT EXISTS `failed_jobs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `uuid` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -484,10 +484,10 @@ CREATE TABLE IF NOT EXISTS `failed_jobs` (
   UNIQUE KEY `failed_jobs_uuid_unique` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.failed_jobs: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.failed_jobs: ~0 rows (approximately)
 DELETE FROM `failed_jobs`;
 
--- Dumping structure for table ppm_dies_monitoring.import_logs
+-- Dumping structure for table ppm_dies_monitoring_april.import_logs
 CREATE TABLE IF NOT EXISTS `import_logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `type` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -506,7 +506,7 @@ CREATE TABLE IF NOT EXISTS `import_logs` (
   CONSTRAINT `import_logs_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.import_logs: ~13 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.import_logs: ~13 rows (approximately)
 DELETE FROM `import_logs`;
 INSERT INTO `import_logs` (`id`, `type`, `file_name`, `status`, `imported_count`, `skipped_count`, `accumulated_count`, `skipped_rows`, `error_message`, `user_id`, `created_at`, `updated_at`) VALUES
 	(1, 'production', 'Template_Act_Prod_2026-03-30 (1).xlsx', 'success', 3, 0, 1, NULL, NULL, 7, '2026-03-31 07:24:53', '2026-03-31 07:24:53'),
@@ -525,7 +525,7 @@ INSERT INTO `import_logs` (`id`, `type`, `file_name`, `status`, `imported_count`
 	(14, 'production', 'Template_Act_Prod_2026-04-14 (1)ss.xlsx', 'success', 2, 0, 0, NULL, NULL, 1, '2026-04-14 11:01:05', '2026-04-14 11:01:05'),
 	(15, 'dies', 'Template_Dies_Master_Tambahan.xlsx', 'success', 0, 1, 0, '[{"model": "KS", "reason": "Part number \'65122-I6050 (CC) \' already exists in Dies Master.", "part_name": "PNL-CTR FLOOR SIDE,RH", "row_number": 2, "part_number": "65122-I6050 (CC) "}]', NULL, 1, '2026-04-15 01:59:00', '2026-04-15 01:59:00');
 
--- Dumping structure for table ppm_dies_monitoring.jobs
+-- Dumping structure for table ppm_dies_monitoring_april.jobs
 CREATE TABLE IF NOT EXISTS `jobs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `queue` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -538,10 +538,10 @@ CREATE TABLE IF NOT EXISTS `jobs` (
   KEY `jobs_queue_index` (`queue`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.jobs: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.jobs: ~0 rows (approximately)
 DELETE FROM `jobs`;
 
--- Dumping structure for table ppm_dies_monitoring.job_batches
+-- Dumping structure for table ppm_dies_monitoring_april.job_batches
 CREATE TABLE IF NOT EXISTS `job_batches` (
   `id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -556,10 +556,10 @@ CREATE TABLE IF NOT EXISTS `job_batches` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.job_batches: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.job_batches: ~0 rows (approximately)
 DELETE FROM `job_batches`;
 
--- Dumping structure for table ppm_dies_monitoring.machine_models
+-- Dumping structure for table ppm_dies_monitoring_april.machine_models
 CREATE TABLE IF NOT EXISTS `machine_models` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `code` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -575,7 +575,7 @@ CREATE TABLE IF NOT EXISTS `machine_models` (
   CONSTRAINT `machine_models_tonnage_standard_id_foreign` FOREIGN KEY (`tonnage_standard_id`) REFERENCES `tonnage_standards` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.machine_models: ~35 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.machine_models: ~35 rows (approximately)
 DELETE FROM `machine_models`;
 INSERT INTO `machine_models` (`id`, `code`, `name`, `tonnage_standard_id`, `description`, `is_active`, `created_at`, `updated_at`) VALUES
 	(1, 'KS', 'KS Series (Grade B)', 5, NULL, 1, '2026-01-21 10:41:16', '2026-01-21 10:41:16'),
@@ -614,7 +614,7 @@ INSERT INTO `machine_models` (`id`, `code`, `name`, `tonnage_standard_id`, `desc
 	(34, '2SK (MEX)', '2SK (Mex)', 3, NULL, 1, '2026-04-13 03:01:19', '2026-04-13 03:01:19'),
 	(35, 'STEEL QX', 'STEEL QX', 1, NULL, 1, '2026-04-13 03:08:28', '2026-04-13 03:08:28');
 
--- Dumping structure for table ppm_dies_monitoring.migrations
+-- Dumping structure for table ppm_dies_monitoring_april.migrations
 CREATE TABLE IF NOT EXISTS `migrations` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `migration` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -622,7 +622,7 @@ CREATE TABLE IF NOT EXISTS `migrations` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.migrations: ~29 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.migrations: ~29 rows (approximately)
 DELETE FROM `migrations`;
 INSERT INTO `migrations` (`id`, `migration`, `batch`) VALUES
 	(1, '0001_01_01_000000_create_users_table', 1),
@@ -663,7 +663,7 @@ INSERT INTO `migrations` (`id`, `migration`, `batch`) VALUES
 	(36, '2026_04_14_113137_clear_dies_size_column', 22),
 	(37, '2026_04_15_101500_expand_die_group_length_on_dies_table', 23);
 
--- Dumping structure for table ppm_dies_monitoring.notifications
+-- Dumping structure for table ppm_dies_monitoring_april.notifications
 CREATE TABLE IF NOT EXISTS `notifications` (
   `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `type` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -677,7 +677,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   KEY `notifications_notifiable_type_notifiable_id_index` (`notifiable_type`,`notifiable_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.notifications: ~24 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.notifications: ~24 rows (approximately)
 DELETE FROM `notifications`;
 INSERT INTO `notifications` (`id`, `type`, `notifiable_type`, `notifiable_id`, `data`, `read_at`, `created_at`, `updated_at`) VALUES
 	('00e15f70-02c1-4fa8-8f9c-b9f221762c04', 'App\\Notifications\\PpmWorkflowNotification', 'App\\Models\\User', 1, '{"type":"ppm_scheduled","die_id":"ZXlKcGRpSTZJalIzZEVkSWNUQlZjRUp3Y1ZaeVJpdFJiemRpUmxFOVBTSXNJblpoYkhWbElqb2lWWFpwVUhNNUwzZDJTbWhqTUROUFoyUm5ZeXN4UVQwOUlpd2liV0ZqSWpvaU16ZzVNR1ZsWkRreE5UY3dORGM0TURkaE1XVmtaRE5pTjJOaE9EQmlPVEEyT1dZMFpUZzBZell5WXpRMk1UZGpaRFU0TVRNeE1XWXhPVEpoWW1Kall5SXNJblJoWnlJNklpSjk=","part_number":"63131-TG4-U000-50","part_name":"STIFF R, FR PILLAR LWR","customer":"UPIN","actor":"Rydha Ramlan Gunawan","event":"ppm_scheduled","message":"\\ud83d\\uddd3\\ufe0f MTN Dies created PPM Schedule for 63131-TG4-U000-50 (STIFF R, FR PILLAR LWR) \\u2014 2026-04-14 by Rydha Ramlan Gunawan","icon":"fa-calendar-alt","color":"blue"}', NULL, '2026-04-14 09:40:52', '2026-04-14 09:40:52'),
@@ -721,7 +721,7 @@ INSERT INTO `notifications` (`id`, `type`, `notifiable_type`, `notifiable_id`, `
 	('fa1fdcb9-43d3-44f8-a835-bd0d023e3d7e', 'App\\Notifications\\PpmWorkflowNotification', 'App\\Models\\User', 1, '{"type":"lot_date_set","die_id":"ZXlKcGRpSTZJa2xEVDJoUGEyMDNLMjFKY1ZCcVRFTXhiamRNWVVFOVBTSXNJblpoYkhWbElqb2lTRkJvVmpKWFMydG5VVWxSTkVGbFMyUkZZemh6VVQwOUlpd2liV0ZqSWpvaU5UZ3dZemxrTWpVeE1UVmxNV05tTkRFNE1UWmpabVpoTW1NelkyWTJaamd4TW1ZM05XWXlOelF3T1dGbE1qazNOemd3T0dKaE9EazRZelJqTVdJME5pSXNJblJoWnlJNklpSjk=","part_number":"63131-TG4-U000-50","part_name":"STIFF R, FR PILLAR LWR","customer":"UPIN","actor":"Sakti Oktaviani","event":"lot_date_set","message":"\\ud83d\\udcc5 PPIC set Last LOT Date for 63131-TG4-U000-50 (STIFF R, FR PILLAR LWR) \\u2014 Date: 2026-04-07 by Sakti Oktaviani","icon":"fa-calendar-check","color":"purple"}', '2026-04-14 03:58:09', '2026-04-14 02:55:18', '2026-04-14 03:58:09'),
 	('fb828333-13be-42a1-92d4-c780c609f9cf', 'App\\Notifications\\PpmWorkflowNotification', 'App\\Models\\User', 7, '{"type":"schedule_approved","die_id":"ZXlKcGRpSTZJa3NyVlhvNU9GRk1NRmgyUzFoVWFuTjJWbmhDTDNjOVBTSXNJblpoYkhWbElqb2lNemR6ZFVkeU1EaFZSVTh3YlhORWRGTk1Va3R0ZHowOUlpd2liV0ZqSWpvaVpXVTNaV1psTURSak56ZzNaVE0zWlRVNE5qazFNbVl3WVdZNE1UVXdPRFV5TkdFeVl6UmpaR1poTnpCa05tVTJNMkkzT1RVMk56TXdNekpqTnpKaE5DSXNJblJoWnlJNklpSjk=","part_number":"63131-TG4-U000-50","part_name":"STIFF R, FR PILLAR LWR","customer":"UPIN","actor":"Sakti Oktaviani","event":"schedule_approved","message":"\\u2705 PPIC approved PPM Schedule for 63131-TG4-U000-50 (STIFF R, FR PILLAR LWR) by Sakti Oktaviani","icon":"fa-check-double","color":"cyan"}', NULL, '2026-04-16 01:19:07', '2026-04-16 01:19:07');
 
--- Dumping structure for table ppm_dies_monitoring.password_reset_tokens
+-- Dumping structure for table ppm_dies_monitoring_april.password_reset_tokens
 CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
   `email` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -729,10 +729,10 @@ CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
   PRIMARY KEY (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.password_reset_tokens: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.password_reset_tokens: ~0 rows (approximately)
 DELETE FROM `password_reset_tokens`;
 
--- Dumping structure for table ppm_dies_monitoring.ppm_histories
+-- Dumping structure for table ppm_dies_monitoring_april.ppm_histories
 CREATE TABLE IF NOT EXISTS `ppm_histories` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `die_id` bigint unsigned NOT NULL,
@@ -760,10 +760,10 @@ CREATE TABLE IF NOT EXISTS `ppm_histories` (
   CONSTRAINT `ppm_histories_die_id_foreign` FOREIGN KEY (`die_id`) REFERENCES `dies` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.ppm_histories: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.ppm_histories: ~0 rows (approximately)
 DELETE FROM `ppm_histories`;
 
--- Dumping structure for table ppm_dies_monitoring.ppm_schedules
+-- Dumping structure for table ppm_dies_monitoring_april.ppm_schedules
 CREATE TABLE IF NOT EXISTS `ppm_schedules` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `die_id` bigint unsigned NOT NULL,
@@ -785,13 +785,13 @@ CREATE TABLE IF NOT EXISTS `ppm_schedules` (
   CONSTRAINT `ppm_schedules_die_id_foreign` FOREIGN KEY (`die_id`) REFERENCES `dies` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.ppm_schedules: ~2 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.ppm_schedules: ~2 rows (approximately)
 DELETE FROM `ppm_schedules`;
 INSERT INTO `ppm_schedules` (`id`, `die_id`, `year`, `month`, `week`, `forecast_stroke`, `plan_week`, `is_done`, `actual_stroke`, `ppm_date`, `pic`, `notes`, `updated_by`, `created_at`, `updated_at`) VALUES
 	(4, 1174, 2026, 4, 2, NULL, 14, 0, NULL, NULL, NULL, NULL, 'Rydha Ramlan Gunawan', '2026-04-14 03:02:42', '2026-04-14 03:08:45'),
 	(5, 983, 2026, 4, 2, NULL, NULL, 0, NULL, '2026-04-15', 'Rydha Ramlan Gunawan', NULL, 'Rydha Ramlan Gunawan', '2026-04-14 03:09:23', '2026-04-14 09:43:53');
 
--- Dumping structure for table ppm_dies_monitoring.production_logs
+-- Dumping structure for table ppm_dies_monitoring_april.production_logs
 CREATE TABLE IF NOT EXISTS `production_logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `die_id` bigint unsigned NOT NULL,
@@ -818,7 +818,7 @@ CREATE TABLE IF NOT EXISTS `production_logs` (
   CONSTRAINT `production_logs_die_id_foreign` FOREIGN KEY (`die_id`) REFERENCES `dies` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=797 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.production_logs: ~30 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.production_logs: ~30 rows (approximately)
 DELETE FROM `production_logs`;
 INSERT INTO `production_logs` (`id`, `die_id`, `model`, `production_date`, `shift`, `line`, `running_process`, `start_time`, `finish_time`, `total_hours`, `total_minutes`, `break_time`, `output_qty`, `month`, `created_by`, `created_at`, `updated_at`) VALUES
 	(765, 1174, NULL, '2026-04-14', 1, '1200T', 'Auto', NULL, NULL, NULL, 0, 0, 600, 'Apr', 7, '2026-04-14 09:51:31', '2026-04-14 09:51:31'),
@@ -854,7 +854,7 @@ INSERT INTO `production_logs` (`id`, `die_id`, `model`, `production_date`, `shif
 	(795, 1166, NULL, '2026-04-11', 1, '800T', 'Auto', '16:18:00', '17:45:00', 1.45, 87, 15, 200, 'Apr', 1, '2026-04-14 11:01:05', '2026-04-14 11:01:05'),
 	(796, 1097, NULL, '2026-04-11', 1, '800T', 'Auto', '17:45:00', '19:50:00', 2.08, 125, 20, 300, 'Apr', 1, '2026-04-14 11:01:05', '2026-04-14 11:01:05');
 
--- Dumping structure for table ppm_dies_monitoring.sessions
+-- Dumping structure for table ppm_dies_monitoring_april.sessions
 CREATE TABLE IF NOT EXISTS `sessions` (
   `id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `user_id` bigint unsigned DEFAULT NULL,
@@ -867,7 +867,7 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   KEY `sessions_last_activity_index` (`last_activity`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.sessions: ~2 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.sessions: ~2 rows (approximately)
 DELETE FROM `sessions`;
 INSERT INTO `sessions` (`id`, `user_id`, `ip_address`, `user_agent`, `payload`, `last_activity`) VALUES
 	('ItEm9VB7li3Hmz3EusTfqeXYvyEsf5IAEPLlI6ua', 1, '192.168.1.100', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0', 'YTo0OntzOjY6Il90b2tlbiI7czo0MDoiWGtIWHl1azVDOU56akNqY3BoSDIxczI5TjNFM05nYkxhQkVXeG9WQyI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MzM6Imh0dHA6Ly8xOTIuMTY4LjEuNzo4MDAyL2Rhc2hib2FyZCI7fXM6NjoiX2ZsYXNoIjthOjI6e3M6Mzoib2xkIjthOjA6e31zOjM6Im5ldyI7YTowOnt9fXM6NTA6ImxvZ2luX3dlYl81OWJhMzZhZGRjMmIyZjk0MDE1ODBmMDE0YzdmNThlYTRlMzA5ODlkIjtpOjE7fQ==', 1776306591),
@@ -875,7 +875,7 @@ INSERT INTO `sessions` (`id`, `user_id`, `ip_address`, `user_agent`, `payload`, 
 	('Lc53bPtOv3L2eSfKiAy3h4fiQ3DHI2waTMACcEuJ', NULL, '192.168.1.7', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiaEVvcGViNVNFc3BTUnN1NGNUdWdCMldFM3lOajZtc3VSd0FDcVRoSCI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MjM6Imh0dHA6Ly8xOTIuMTY4LjEuNzo4MDAyIjt9czo2OiJfZmxhc2giO2E6Mjp7czozOiJvbGQiO2E6MDp7fXM6MzoibmV3IjthOjA6e319fQ==', 1776304372),
 	('xr9IONb90MGvaXxDppJcXIdxNLDppORaBZFOT87L', 2, '192.168.1.83', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36', 'YTo0OntzOjY6Il90b2tlbiI7czo0MDoiY0o2WEtQdWlYSUZqbTV1NGlaamRyVmE0OFFhSVRoVkcyT1FQNWtHOCI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6Mjk6Imh0dHA6Ly8xOTIuMTY4LjEuNzo4MDAyL2xvZ2luIjt9czo2OiJfZmxhc2giO2E6Mjp7czozOiJvbGQiO2E6MDp7fXM6MzoibmV3IjthOjA6e319czo1MDoibG9naW5fd2ViXzU5YmEzNmFkZGMyYjJmOTQwMTU4MGYwMTRjN2Y1OGVhNGUzMDk4OWQiO2k6Mjt9', 1776302952);
 
--- Dumping structure for table ppm_dies_monitoring.special_dies_repairs
+-- Dumping structure for table ppm_dies_monitoring_april.special_dies_repairs
 CREATE TABLE IF NOT EXISTS `special_dies_repairs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `die_id` bigint unsigned NOT NULL,
@@ -914,10 +914,10 @@ CREATE TABLE IF NOT EXISTS `special_dies_repairs` (
   CONSTRAINT `special_dies_repairs_die_id_foreign` FOREIGN KEY (`die_id`) REFERENCES `dies` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.special_dies_repairs: ~0 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.special_dies_repairs: ~0 rows (approximately)
 DELETE FROM `special_dies_repairs`;
 
--- Dumping structure for table ppm_dies_monitoring.tonnage_standards
+-- Dumping structure for table ppm_dies_monitoring_april.tonnage_standards
 CREATE TABLE IF NOT EXISTS `tonnage_standards` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `tonnage` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -931,7 +931,7 @@ CREATE TABLE IF NOT EXISTS `tonnage_standards` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.tonnage_standards: ~4 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.tonnage_standards: ~4 rows (approximately)
 DELETE FROM `tonnage_standards`;
 INSERT INTO `tonnage_standards` (`id`, `tonnage`, `grade`, `type`, `standard_stroke`, `lot_size`, `description`, `created_at`, `updated_at`) VALUES
 	(1, '1200T', 'D', 'Tandem Auto', 5000, 600, '1200 Ton Press - Grade D', '2026-01-21 10:41:16', '2026-03-03 19:48:57'),
@@ -939,7 +939,7 @@ INSERT INTO `tonnage_standards` (`id`, `tonnage`, `grade`, `type`, `standard_str
 	(4, '250T', 'B', 'Tandem', 7000, 600, '250 Ton Press - Grade B (Tandem)', '2026-01-21 10:41:16', '2026-03-03 19:55:22'),
 	(5, '800T', 'C', 'Tandem Auto', 6000, 600, NULL, '2026-03-03 19:45:17', '2026-04-13 07:59:47');
 
--- Dumping structure for table ppm_dies_monitoring.users
+-- Dumping structure for table ppm_dies_monitoring_april.users
 CREATE TABLE IF NOT EXISTS `users` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -958,7 +958,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   UNIQUE KEY `users_nik_unique` (`nik`)
 ) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.users: ~10 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.users: ~10 rows (approximately)
 DELETE FROM `users`;
 INSERT INTO `users` (`id`, `name`, `nik`, `email`, `role`, `photo`, `is_active`, `email_verified_at`, `password`, `remember_token`, `created_at`, `updated_at`) VALUES
 	(1, 'Administrator', '000.00.00', 'admin@gmail.com', 'admin', 'photos/users/BOlil4n4GgP1sh3RupmbDJQehjlNsUhS1dgGCpxH.jpg', 1, NULL, '$2y$12$AZRbOyrHCJIzJMkef/OC4OOokyjCG8IxSrRgFKx8iIE.M.zKv5n7C', NULL, '2026-01-21 10:42:09', '2026-03-09 23:53:20'),
@@ -972,7 +972,7 @@ INSERT INTO `users` (`id`, `name`, `nik`, `email`, `role`, `photo`, `is_active`,
 	(10, 'Idham Basir', '631.08.14', 'testing2@thaisummit.co.id', 'mgr_gm', 'photos/users/k4TXLPmJXqjlslgL1YiDvQbSnw5cPSxeRnU31xdB.jpg', 1, NULL, '$2y$12$IY0VQm2l5aARhY0IE602Zuq/iC0PZFPNvErStqsWbDP5DHN.2rKma', NULL, '2026-03-09 23:46:36', '2026-03-09 23:47:19'),
 	(11, 'Iyan Supadiyanto', '606.10.13', 'production-01@thaisummit.co.id', 'pe', 'photos/users/3BvQDCI3ERb4ajHyGHvNxfx3eJCiiLE9tKy0OXFC.jpg', 1, NULL, '$2y$12$XHZkKfEQHLgYK196./TPr..vxaDFq3oR7HxLo/VZafYI2NvsKQb9y', NULL, '2026-03-09 23:48:16', '2026-03-09 23:48:16');
 
--- Dumping structure for table ppm_dies_monitoring.user_messages
+-- Dumping structure for table ppm_dies_monitoring_april.user_messages
 CREATE TABLE IF NOT EXISTS `user_messages` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `sender_id` bigint unsigned NOT NULL,
@@ -1000,7 +1000,7 @@ CREATE TABLE IF NOT EXISTS `user_messages` (
   CONSTRAINT `user_messages_sender_id_foreign` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.user_messages: ~1 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.user_messages: ~1 rows (approximately)
 DELETE FROM `user_messages`;
 INSERT INTO `user_messages` (`id`, `sender_id`, `receiver_id`, `receiver_role`, `die_id`, `subject`, `message`, `priority`, `category`, `parent_id`, `is_read`, `read_at`, `created_at`, `updated_at`) VALUES
 	(1, 2, 5, NULL, NULL, '63131-TG4-U000-50', 'Ini yang di minta plan untuk next lot nya bukan informasi untuk last lot', 'normal', 'general', NULL, 1, '2026-04-14 09:36:55', '2026-04-14 09:35:02', '2026-04-14 09:36:55');

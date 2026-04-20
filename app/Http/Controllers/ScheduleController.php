@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\DieModel;
 use App\Models\Customer;
-use App\Models\MachineModel;
 use App\Models\PpmSchedule;
 use App\Models\TonnageStandard;
 use App\Services\DieMonitoringService;
@@ -139,6 +138,7 @@ class ScheduleController extends Controller
     protected function transformToScheduleData($dies, $year): array
     {
         $grouped = [];
+        $totalStrokeAtPpmByPartNumber = $this->calculateTotalStrokeAtPpmByPartNumber($dies);
         // Track which group_names already have a representative for needs_scheduling
         // So only 1 die per group shows as "needs scheduling" on the calendar
         $scheduledGroupNames = [];
@@ -164,6 +164,7 @@ class ScheduleController extends Controller
                     'plan' => [null, null, null, null],
                     'actual' => [null, null, null, null],
                     'stroke' => [null, null, null, null],
+                    'status' => [null, null, null, null],
                     'ppm_date' => [null, null, null, null],
                     'pic' => [null, null, null, null],
                 ];
@@ -179,6 +180,7 @@ class ScheduleController extends Controller
                     $monthlyData[$month]['plan'][$week] = $schedule->plan_week;
                     $monthlyData[$month]['actual'][$week] = $schedule->is_done;
                     $monthlyData[$month]['stroke'][$week] = $schedule->actual_stroke;
+                    $monthlyData[$month]['status'][$week] = $schedule->is_done ? 'Done' : 'Scheduled In';
                     $monthlyData[$month]['ppm_date'][$week] = $schedule->ppm_date?->format('d/m');
                     $monthlyData[$month]['pic'][$week] = $schedule->pic;
                 }
@@ -193,10 +195,13 @@ class ScheduleController extends Controller
                 if (isset($monthlyData[$month])) {
                     $monthlyData[$month]['actual'][$week] = true;
                     $monthlyData[$month]['stroke'][$week] = $history->stroke_at_ppm;
+                    $monthlyData[$month]['status'][$week] = 'Done';
                     $monthlyData[$month]['ppm_date'][$week] = $history->ppm_date->format('d/m');
                     $monthlyData[$month]['pic'][$week] = $history->pic;
                 }
             }
+
+            $totalStrokeAtPpm = $totalStrokeAtPpmByPartNumber[$die->part_number] ?? 0;
 
             $grouped[$groupKey]['dies'][] = [
                 'id' => $die->id,
@@ -206,6 +211,7 @@ class ScheduleController extends Controller
                 'model' => $die->machineModel?->code,
                 'total_die' => $die->qty_die,
                 'accumulation_stroke' => $die->accumulation_stroke,
+                'total_stroke_at_ppm' => $totalStrokeAtPpm,
                 'last_stroke' => $die->last_stroke,
                 'control_stroke' => $die->control_stroke ?? $die->standard_stroke,
                 'standard_stroke' => $die->standard_stroke,
@@ -228,6 +234,10 @@ class ScheduleController extends Controller
                 'ppm_scheduled_by' => $die->ppm_scheduled_by,
                 'schedule_approved_at' => $die->schedule_approved_at?->format('d-M-Y H:i'),
                 'group_name' => $die->group_name,
+                'has_schedule_status' => collect($monthlyData)
+                    ->pluck('status')
+                    ->flatten()
+                    ->contains(fn($status) => !empty($status)),
                 'needs_scheduling' => (function () use ($die, &$scheduledGroupNames) {
                     $needs = $die->last_lot_date && !$die->ppm_scheduled_date
                         && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]);
@@ -246,6 +256,37 @@ class ScheduleController extends Controller
         }
 
         return array_values($grouped);
+    }
+
+    private function calculateTotalStrokeAtPpmByPartNumber($dies): array
+    {
+        $groupedHistories = [];
+
+        foreach ($dies as $die) {
+            foreach ($die->ppmHistories as $history) {
+                if (!$history->ppm_date) {
+                    continue;
+                }
+
+                $partNumber = $die->part_number;
+                $uniqueKey = implode('|', [
+                    (string) $history->die_id,
+                    $history->ppm_date->format('Y-m-d'),
+                ]);
+
+                if (!isset($groupedHistories[$partNumber][$uniqueKey])) {
+                    $groupedHistories[$partNumber][$uniqueKey] = (int) ($history->stroke_at_ppm ?? 0);
+                }
+            }
+        }
+
+        $totals = [];
+
+        foreach ($groupedHistories as $partNumber => $histories) {
+            $totals[$partNumber] = array_sum($histories);
+        }
+
+        return $totals;
     }
 
     /**

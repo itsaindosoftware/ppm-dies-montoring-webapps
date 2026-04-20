@@ -4,7 +4,7 @@
 
     Setiap Push Ke Server dan Pull Dari Server, harus backup db dulu
 
-    yang ini ditunda dulu 
+    yang ini ditunda dulu  (nanti lanjut hari senin)
     maaf maksudnya bagaimna yang kode ini
  {die.accumulation_stroke?. toLocaleString()}
  diisi oleh jumlah akumulasi perhitungan total semua stroke_at_ppm berdasarkan satu part number, soalnya data di database yang ada di gambar, datanya ada
