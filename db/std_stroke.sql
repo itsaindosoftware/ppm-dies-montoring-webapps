@@ -15,11 +15,11 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 
--- Dumping database structure for ppm_dies_monitoring
-CREATE DATABASE IF NOT EXISTS `ppm_dies_monitoring` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
-USE `ppm_dies_monitoring`;
+-- Dumping database structure for ppm_dies_monitoring_april
+CREATE DATABASE IF NOT EXISTS `ppm_dies_monitoring_april` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `ppm_dies_monitoring_april`;
 
--- Dumping structure for table ppm_dies_monitoring.tonnage_standards
+-- Dumping structure for table ppm_dies_monitoring_april.tonnage_standards
 CREATE TABLE IF NOT EXISTS `tonnage_standards` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `tonnage` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS `tonnage_standards` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.tonnage_standards: ~4 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.tonnage_standards: ~4 rows (approximately)
 DELETE FROM `tonnage_standards`;
 INSERT INTO `tonnage_standards` (`id`, `tonnage`, `grade`, `type`, `standard_stroke`, `lot_size`, `description`, `created_at`, `updated_at`) VALUES
 	(1, '1200T', 'D', 'Tandem Auto', 5000, 600, '1200 Ton Press - Grade D', '2026-01-21 10:41:16', '2026-03-03 19:48:57'),

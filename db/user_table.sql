@@ -15,11 +15,11 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 
--- Dumping database structure for ppm_dies_monitoring
-CREATE DATABASE IF NOT EXISTS `ppm_dies_monitoring` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */;
-USE `ppm_dies_monitoring`;
+-- Dumping database structure for ppm_dies_monitoring_april
+CREATE DATABASE IF NOT EXISTS `ppm_dies_monitoring_april` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */;
+USE `ppm_dies_monitoring_april`;
 
--- Dumping structure for table ppm_dies_monitoring.users
+-- Dumping structure for table ppm_dies_monitoring_april.users
 CREATE TABLE IF NOT EXISTS `users` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   UNIQUE KEY `users_nik_unique` (`nik`)
 ) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Dumping data for table ppm_dies_monitoring.users: ~10 rows (approximately)
+-- Dumping data for table ppm_dies_monitoring_april.users: ~10 rows (approximately)
 DELETE FROM `users`;
 INSERT INTO `users` (`id`, `name`, `nik`, `email`, `role`, `photo`, `is_active`, `email_verified_at`, `password`, `remember_token`, `created_at`, `updated_at`) VALUES
 	(1, 'Administrator', '000.00.00', 'admin@gmail.com', 'admin', 'photos/users/BOlil4n4GgP1sh3RupmbDJQehjlNsUhS1dgGCpxH.jpg', 1, NULL, '$2y$12$AZRbOyrHCJIzJMkef/OC4OOokyjCG8IxSrRgFKx8iIE.M.zKv5n7C', NULL, '2026-01-21 10:42:09', '2026-03-09 23:53:20'),

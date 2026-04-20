@@ -110,7 +110,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
         switch (field) {
             case 'forecast': return 'Forecast Stroke';
             case 'plan': return 'Plan Week (1-4)';
-            case 'stroke': return 'Actual Stroke';
+            case 'stroke': return 'Accumulation Stroke At PPM';
             case 'ppm_date': return 'PPM Date';
             case 'pic': return 'PIC (Person In Charge)';
             default: return field;
@@ -321,7 +321,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                     {/* Edit hint */}
                     <div className="mt-3 text-xs text-gray-500 flex items-center gap-1">
                         <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">💡 Tip:</span>
-                        <span>Click on Forecast, Plan, Stroke, PPM Date, or PIC cells to edit them</span>
+                        <span>Click on Stroke, PPM Date, or PIC cells to edit them</span>
                     </div>
                 </div>
 
@@ -380,9 +380,9 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                             {/* Dies in Group */}
                                             {group.dies?. map((die, dieIndex) => (
                                                 <React.Fragment key={`die-${die.id}`}>
-                                                    {/* Row 1: Part Number + Forecast */}
+                                                    {/* Row 1: Part Number + PPM Date */}
                                                     <tr key={`${die.id}-1`} className={`border-t-2 border-gray-300 hover:bg-gray-50 ${die.needs_scheduling ? 'bg-amber-50/60' : ''}`}>
-                                                        <td className={`border px-2 py-1 text-center font-medium sticky left-0 z-10 ${die.needs_scheduling ? 'bg-amber-50 border-l-4 border-l-amber-400' : 'bg-gray-50'}`} rowSpan={6}>
+                                                        <td className={`border px-2 py-1 text-center font-medium sticky left-0 z-10 ${die.needs_scheduling ? 'bg-amber-50 border-l-4 border-l-amber-400' : 'bg-gray-50'}`} rowSpan={3}>
                                                             {groupIndex * 100 + dieIndex + 1}
                                                         </td>
                                                         <td className={`border px-2 py-1 sticky left-[40px] z-10 ${die.needs_scheduling ? 'bg-amber-50' : 'bg-white'}`}>
@@ -397,17 +397,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={6}>
+                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={3}>
                                                             {die.model}
                                                         </td>
-                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={6}>
+                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={3}>
                                                             {die.total_die}
                                                         </td>
                                                         <td className="border px-2 py-1 text-xs text-gray-600">
                                                             ACCUMULATION STROKE
                                                         </td>
                                                         {/* PPM Condition Column */}
-                                                        <td className="border px-1 py-1 bg-gray-50" rowSpan={6}>
+                                                        <td className="border px-1 py-1 bg-gray-50" rowSpan={3}>
                                                             <div className="space-y-1">
                                                                 {/* Condition 1 */}
                                                                 <div className={`flex items-center gap-1 text-[10px] ${
@@ -474,107 +474,10 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                             </div>
                                                         </td>
                                                         <td className="border px-2 py-1 text-center">
-                                                            <span className={`px-1 py-0.5 rounded text-xs font-medium ${getStatusColor(die.ppm_status)}`}>
+                                                            {/* <span className={`px-1 py-0.5 rounded text-xs font-medium ${getStatusColor(die.ppm_status)}`}>
                                                                 {die.accumulation_stroke?. toLocaleString()}
-                                                            </span>
+                                                            </span> */}
                                                         </td>
-                                                        <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
-                                                            Forecast
-                                                        </td>
-                                                        {/* Forecast cells - Editable */}
-                                                        {months.map((_, monthIdx) => (
-                                                            weeks.map((_, weekIdx) => {
-                                                                const value = die.monthly_data?.[monthIdx + 1]?.forecast?.[weekIdx];
-                                                                return renderEditableCell(
-                                                                    die, monthIdx, weekIdx, 'forecast', value,
-                                                                    renderCell(value, 'forecast')
-                                                                );
-                                                            })
-                                                        ))}
-                                                    </tr>
-
-                                                    {/* Row 2: Part Name + Plan */}
-                                                    <tr key={`${die.id}-2`} className={`hover:bg-gray-50 ${die.needs_scheduling ? 'bg-amber-50/40' : ''}`}>
-                                                        <td className={`border px-2 py-1 text-gray-600 text-xs sticky left-[40px] z-10 max-w-[180px] ${die.needs_scheduling ? 'bg-amber-50' : 'bg-white'}`} title={die.part_name}>
-                                                            <div className="truncate">{die.part_name}</div>
-                                                            {die.last_lot_date && (
-                                                                <div className="text-[10px] text-purple-600 mt-0.5 flex items-center gap-1" title={`Set by ${die.last_lot_date_set_by}`}>
-                                                                    📅 LOT: {die.last_lot_date}
-                                                                </div>
-                                                            )}
-                                                            {die.ppm_scheduled_date && (
-                                                                <div className="text-[10px] text-green-600 mt-0.5 flex items-center gap-1" title={`Scheduled by ${die.ppm_scheduled_by}`}>
-                                                                    ✅ Scheduled: {die.ppm_scheduled_date}
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="border px-2 py-1"></td>
-                                                        <td className="border px-2 py-1"></td>
-                                                        <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
-                                                            Plan
-                                                        </td>
-                                                        {/* Plan cells - Editable */}
-                                                        {months.map((_, monthIdx) => (
-                                                            weeks.map((_, weekIdx) => {
-                                                                const value = die.monthly_data?.[monthIdx + 1]?.plan?.[weekIdx];
-                                                                return renderEditableCell(
-                                                                    die, monthIdx, weekIdx, 'plan', value,
-                                                                    renderCell(value, 'plan')
-                                                                );
-                                                            })
-                                                        ))}
-                                                    </tr>
-
-                                                    {/* Row 3: Accumulation All + Actual */}
-                                                    <tr key={`${die.id}-3`} className="hover:bg-gray-50">
-                                                        <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
-                                                        <td className="border px-2 py-1 text-xs text-gray-600">
-                                                            ACCUMULATION ALL STROKE
-                                                        </td>
-                                                        <td className="border px-2 py-1 text-center text-xs">
-                                                            {die.standard_stroke?. toLocaleString()}
-                                                        </td>
-                                                        <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
-                                                            Actual
-                                                        </td>
-                                                        {months.map((_, monthIdx) => (
-                                                            weeks.map((_, weekIdx) => (
-                                                                <td key={`${die.id}-actual-${monthIdx}-${weekIdx}`} className="border px-1 py-1 text-center">
-                                                                    {renderCell(die.monthly_data?.[monthIdx + 1]?.actual?.[weekIdx], 'actual')}
-                                                                </td>
-                                                            ))
-                                                        ))}
-                                                    </tr>
-
-                                                    {/* Row 4: Control Stroke + Stroke */}
-                                                    <tr key={`${die.id}-4`} className="hover:bg-gray-50">
-                                                        <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
-                                                        <td className="border px-2 py-1 text-xs text-gray-600">
-                                                            CONTROL STROKE
-                                                        </td>
-                                                        <td className="border px-2 py-1 text-center text-xs font-medium">
-                                                            {die. control_stroke?.toLocaleString()}
-                                                        </td>
-                                                        <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
-                                                            Stroke
-                                                        </td>
-                                                        {/* Stroke cells - Editable */}
-                                                        {months.map((_, monthIdx) => (
-                                                            weeks.map((_, weekIdx) => {
-                                                                const value = die.monthly_data?.[monthIdx + 1]?.stroke?.[weekIdx];
-                                                                return renderEditableCell(
-                                                                    die, monthIdx, weekIdx, 'stroke', value,
-                                                                    renderCell(value, 'stroke')
-                                                                );
-                                                            })
-                                                        ))}
-                                                    </tr>
-
-                                                    {/* Row 5: PPM Date */}
-                                                    <tr key={`${die.id}-5`} className="hover:bg-gray-50">
-                                                        <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
-                                                        <td className="border px-2 py-1"></td>
-                                                        <td className="border px-2 py-1"></td>
                                                         <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
                                                             PPM Date
                                                         </td>
@@ -590,11 +493,51 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                         ))}
                                                     </tr>
 
-                                                    {/* Row 6: PIC */}
-                                                    <tr key={`${die.id}-6`} className="hover:bg-gray-50 border-b-2 border-gray-200">
+                                                    {/* Row 2: Part Name + Accumulation Stroke At PPM */}
+                                                    <tr key={`${die.id}-2`} className={`hover:bg-gray-50 ${die.needs_scheduling ? 'bg-amber-50/40' : ''}`}>
+                                                        <td className={`border px-2 py-1 text-gray-600 text-xs sticky left-[40px] z-10 max-w-[180px] ${die.needs_scheduling ? 'bg-amber-50' : 'bg-white'}`} title={die.part_name}>
+                                                            <div className="truncate">{die.part_name}</div>
+                                                            {die.last_lot_date && (
+                                                                <div className="text-[10px] text-purple-600 mt-0.5 flex items-center gap-1" title={`Set by ${die.last_lot_date_set_by}`}>
+                                                                    📅 LOT: {die.last_lot_date}
+                                                                </div>
+                                                            )}
+                                                            {die.ppm_scheduled_date && (
+                                                                <div className="text-[10px] text-green-600 mt-0.5 flex items-center gap-1" title={`Scheduled by ${die.ppm_scheduled_by}`}>
+                                                                    ✅ Scheduled: {die.ppm_scheduled_date}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="border px-2 py-1 text-xs text-gray-600">
+                                                            ACCUMULATION ALL STROKE
+                                                        </td>
+                                                        <td className="border px-2 py-1 text-center text-xs">
+                                                            {die.total_stroke_at_ppm? die.total_stroke_at_ppm.toLocaleString() : '-'}
+                                                        </td>
+                                                        <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
+                                                            Accumulation<br/>Stroke At PPM
+                                                        </td>
+                                                        {/* Accumulation Stroke At PPM cells - Editable */}
+                                                        {months.map((_, monthIdx) => (
+                                                            weeks.map((_, weekIdx) => {
+                                                                const value = die.monthly_data?.[monthIdx + 1]?.stroke?.[weekIdx];
+                                                                return renderEditableCell(
+                                                                    die, monthIdx, weekIdx, 'stroke', value,
+                                                                    renderCell(value, 'stroke')
+                                                                );
+                                                            })
+                                                        ))}
+                                                    </tr>
+
+                                                    {/* Row 3: PIC */}
+                                                    <tr key={`${die.id}-3`} className="hover:bg-gray-50 border-b-2 border-gray-200">
                                                         <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
-                                                        <td className="border px-2 py-1"></td>
-                                                        <td className="border px-2 py-1"></td>
+                                                        <td className="border px-2 py-1 text-xs text-gray-600">
+                                                            CONTROL STROKE
+                                                        </td>
+                                                        <td className="border px-2 py-1 text-center text-xs font-medium">
+                                                            {die. control_stroke?.toLocaleString()}
+                                                        </td>
                                                         <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
                                                             Pic
                                                         </td>
@@ -631,14 +574,6 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                     {/* Legend */}
                     <div className="bg-gray-50 px-4 py-3 border-t flex flex-wrap items-center gap-6 text-sm">
                         <span className="font-medium text-gray-700">Legend:</span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xl">●</span>
-                            <span>PPM Done</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center justify-center w-5 h-5 bg-green-600 text-white text-xs font-bold rounded">4</span>
-                            <span>Planned Week</span>
-                        </div>
                         <div className="flex items-center gap-2">
                             <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">5000</span>
                             <span>Critical</span>

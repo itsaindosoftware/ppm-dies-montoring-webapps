@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DieModel;
 use App\Models\Customer;
+use App\Models\MachineModel;
 use App\Models\PpmSchedule;
 use App\Models\TonnageStandard;
 use App\Services\DieMonitoringService;
@@ -138,7 +139,6 @@ class ScheduleController extends Controller
     protected function transformToScheduleData($dies, $year): array
     {
         $grouped = [];
-        $totalStrokeAtPpmByPartNumber = $this->calculateTotalStrokeAtPpmByPartNumber($dies);
         // Track which group_names already have a representative for needs_scheduling
         // So only 1 die per group shows as "needs scheduling" on the calendar
         $scheduledGroupNames = [];
@@ -198,8 +198,6 @@ class ScheduleController extends Controller
                 }
             }
 
-            $totalStrokeAtPpm = $totalStrokeAtPpmByPartNumber[$die->part_number] ?? 0;
-
             $grouped[$groupKey]['dies'][] = [
                 'id' => $die->id,
                 'encrypted_id' => $die->encrypted_id,
@@ -208,7 +206,6 @@ class ScheduleController extends Controller
                 'model' => $die->machineModel?->code,
                 'total_die' => $die->qty_die,
                 'accumulation_stroke' => $die->accumulation_stroke,
-                'total_stroke_at_ppm' => $totalStrokeAtPpm,
                 'last_stroke' => $die->last_stroke,
                 'control_stroke' => $die->control_stroke ?? $die->standard_stroke,
                 'standard_stroke' => $die->standard_stroke,
@@ -249,37 +246,6 @@ class ScheduleController extends Controller
         }
 
         return array_values($grouped);
-    }
-
-    private function calculateTotalStrokeAtPpmByPartNumber($dies): array
-    {
-        $groupedHistories = [];
-
-        foreach ($dies as $die) {
-            foreach ($die->ppmHistories as $history) {
-                if (!$history->ppm_date) {
-                    continue;
-                }
-
-                $partNumber = $die->part_number;
-                $uniqueKey = implode('|', [
-                    (string) $history->die_id,
-                    $history->ppm_date->format('Y-m-d'),
-                ]);
-
-                if (!isset($groupedHistories[$partNumber][$uniqueKey])) {
-                    $groupedHistories[$partNumber][$uniqueKey] = (int) ($history->stroke_at_ppm ?? 0);
-                }
-            }
-        }
-
-        $totals = [];
-
-        foreach ($groupedHistories as $partNumber => $histories) {
-            $totals[$partNumber] = array_sum($histories);
-        }
-
-        return $totals;
     }
 
     /**

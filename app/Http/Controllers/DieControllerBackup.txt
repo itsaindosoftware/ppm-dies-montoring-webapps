@@ -306,6 +306,7 @@ class DieController extends Controller
                 'ppic_remark' => $die->ppic_remark,
                 'schedule_cancelled_at' => $die->schedule_cancelled_at?->format('d-M-Y H:i'),
                 'schedule_cancelled_by' => $die->schedule_cancelled_by,
+                'group_name' => $die->group_name,
             ],
         ]);
     }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\DieChangeLog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Traits\HasEncryptedRouteKey;
@@ -126,6 +127,11 @@ class DieModel extends Model
     public function ppmHistories()
     {
         return $this->hasMany(PpmHistory::class, 'die_id');
+    }
+
+    public function changeLogs()
+    {
+        return $this->hasMany(DieChangeLog::class, 'die_id')->latest();
     }
 
     public function specialRepairs()
