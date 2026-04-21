@@ -10,7 +10,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     const [tonnageId, setTonnageId] = useState(filters?.tonnage_id || '');
     const [editingCell, setEditingCell] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
-    const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' | 'needs_schedule' | 'already_scheduled'
+    const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' | 'needs_schedule' | 'already_scheduled' | 'status_scheduled'
     const tableRef = useRef(null);
 
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
@@ -25,6 +25,10 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
         sum + (g.dies?.filter(d => d.ppm_scheduled_date && !d.needs_scheduling).length || 0), 0
     ) || 0;
 
+    const statusScheduledCount = scheduleData?.reduce((sum, g) =>
+        sum + (g.dies?.filter(d => d.has_schedule_status).length || 0), 0
+    ) || 0;
+
     // Filter schedule data based on active filter
     const filteredScheduleData = scheduleFilter === 'all'
         ? scheduleData
@@ -33,6 +37,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             dies: group.dies?.filter(d =>
                 scheduleFilter === 'needs_schedule' ? d.needs_scheduling
                 : scheduleFilter === 'already_scheduled' ? (d.ppm_scheduled_date && !d.needs_scheduling)
+                : scheduleFilter === 'status_scheduled' ? d.has_schedule_status
                 : true
             ) || [],
         })).filter(group => group.dies.length > 0);
@@ -179,6 +184,18 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             return <span className="text-xs font-medium text-blue-600">{value}</span>;
         }
 
+        if (type === 'schedule_status' && value) {
+            const statusClasses = value === 'Done'
+                ? 'bg-green-100 text-green-700 border-green-200'
+                : 'bg-amber-100 text-amber-700 border-amber-200';
+
+            return (
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold ${statusClasses}`}>
+                    {value}
+                </span>
+            );
+        }
+
         return <span className="text-xs">{value}</span>;
     };
 
@@ -266,7 +283,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                     </div>
 
                     {/* MTN Dies: Schedule Status Filters */}
-                    {isMtnDies && (needsScheduleCount > 0 || alreadyScheduledCount > 0) && (
+                    {isMtnDies && (needsScheduleCount > 0 || alreadyScheduledCount > 0 || statusScheduledCount > 0) && (
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             <span className="text-xs font-medium text-gray-500 mr-1">Filter:</span>
                             <button
@@ -307,11 +324,25 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                     ✅  Already Scheduled ({alreadyScheduledCount})
                                 </button>
                             )}
+                            {statusScheduledCount > 0 && (
+                                <button
+                                    onClick={() => setScheduleFilter(scheduleFilter === 'status_scheduled' ? 'all' : 'status_scheduled')}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                                        scheduleFilter === 'status_scheduled'
+                                            ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-300'
+                                            : 'bg-blue-50 text-blue-800 border border-blue-300 hover:bg-blue-100'
+                                    }`}
+                                >
+                                    📌 Done PPM ({statusScheduledCount})
+                                </button>
+                            )}
                             {scheduleFilter !== 'all' && (
                                 <span className="text-xs text-gray-500 ml-2">
                                     {scheduleFilter === 'needs_schedule'
                                         ? 'Showing dies that have a LOT date but have not been scheduled for PPM yet'
-                                        : 'Showing dies that already have a PPM schedule'
+                                        : scheduleFilter === 'already_scheduled'
+                                            ? 'Showing dies that already have a PPM schedule'
+                                            : 'Showing dies that already have a PPM status marked Done'
                                     }
                                 </span>
                             )}
@@ -382,7 +413,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                 <React.Fragment key={`die-${die.id}`}>
                                                     {/* Row 1: Part Number + PPM Date */}
                                                     <tr key={`${die.id}-1`} className={`border-t-2 border-gray-300 hover:bg-gray-50 ${die.needs_scheduling ? 'bg-amber-50/60' : ''}`}>
-                                                        <td className={`border px-2 py-1 text-center font-medium sticky left-0 z-10 ${die.needs_scheduling ? 'bg-amber-50 border-l-4 border-l-amber-400' : 'bg-gray-50'}`} rowSpan={3}>
+                                                        <td className={`border px-2 py-1 text-center font-medium sticky left-0 z-10 ${die.needs_scheduling ? 'bg-amber-50 border-l-4 border-l-amber-400' : 'bg-gray-50'}`} rowSpan={4}>
                                                             {groupIndex * 100 + dieIndex + 1}
                                                         </td>
                                                         <td className={`border px-2 py-1 sticky left-[40px] z-10 ${die.needs_scheduling ? 'bg-amber-50' : 'bg-white'}`}>
@@ -397,17 +428,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={3}>
+                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={4}>
                                                             {die.model}
                                                         </td>
-                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={3}>
+                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={4}>
                                                             {die.total_die}
                                                         </td>
                                                         <td className="border px-2 py-1 text-xs text-gray-600">
                                                             ACCUMULATION STROKE
                                                         </td>
                                                         {/* PPM Condition Column */}
-                                                        <td className="border px-1 py-1 bg-gray-50" rowSpan={3}>
+                                                        <td className="border px-1 py-1 bg-gray-50" rowSpan={4}>
                                                             <div className="space-y-1">
                                                                 {/* Condition 1 */}
                                                                 <div className={`flex items-center gap-1 text-[10px] ${
@@ -529,8 +560,36 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                         ))}
                                                     </tr>
 
-                                                    {/* Row 3: PIC */}
-                                                    <tr key={`${die.id}-3`} className="hover:bg-gray-50 border-b-2 border-gray-200">
+                                                    {/* Row 3: Status */}
+                                                    <tr key={`${die.id}-3`} className="hover:bg-gray-50">
+                                                        <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
+                                                        <td className="border px-2 py-1 text-xs text-gray-600">
+                                                            STATUS
+                                                        </td>
+                                                        <td className="border px-2 py-1 text-center text-xs font-medium">
+                                                            -
+                                                        </td>
+                                                        <td className="border px-2 py-1 text-xs bg-gray-50 font-medium">
+                                                            Status
+                                                        </td>
+                                                        {months.map((_, monthIdx) => (
+                                                            weeks.map((_, weekIdx) => {
+                                                                const value = die.monthly_data?.[monthIdx + 1]?.status?.[weekIdx];
+
+                                                                return (
+                                                                    <td
+                                                                        key={`${die.id}-status-${monthIdx}-${weekIdx}`}
+                                                                        className="border px-1 py-1 text-center"
+                                                                    >
+                                                                        {renderCell(value, 'schedule_status')}
+                                                                    </td>
+                                                                );
+                                                            })
+                                                        ))}
+                                                    </tr>
+
+                                                    {/* Row 4: PIC */}
+                                                    <tr key={`${die.id}-4`} className="hover:bg-gray-50 border-b-2 border-gray-200">
                                                         <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
                                                         <td className="border px-2 py-1 text-xs text-gray-600">
                                                             CONTROL STROKE
@@ -600,12 +659,12 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                 </div>
 
                 {/* Summary Stats */}
-                <div className={`mt-4 grid gap-4 ${isMtnDies ? 'grid-cols-6' : 'grid-cols-4'}`}>
+                <div className={`mt-4 grid gap-4 ${isMtnDies ? 'grid-cols-7' : 'grid-cols-4'}`}>
                     <div className="bg-white rounded-lg shadow-sm p-4 text-center">
                         <div className="text-2xl font-bold text-gray-900">
                             {scheduleData?.reduce((sum, g) => sum + (g.dies?.length || 0), 0) || 0}
                         </div>
-                        <div className="text-sm text-gray-500">Total Dies</div>
+                        <div className="text-sm text-gray-500">Total Part Number</div>
                     </div>
                     <div className="bg-green-50 rounded-lg shadow-sm p-4 text-center border border-green-200">
                         <div className="text-2xl font-bold text-green-600">
@@ -648,6 +707,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                     {alreadyScheduledCount}
                                 </div>
                                 <div className="text-sm text-green-700">✅ Already Scheduled</div>
+                            </div>
+                            <div
+                                onClick={() => setScheduleFilter(scheduleFilter === 'status_scheduled' ? 'all' : 'status_scheduled')}
+                                className={`rounded-lg shadow-sm p-4 text-center border cursor-pointer transition hover:shadow-md ${
+                                    statusScheduledCount > 0 ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'
+                                } ${scheduleFilter === 'status_scheduled' ? 'ring-2 ring-blue-400' : ''}`}
+                            >
+                                <div className={`text-2xl font-bold ${statusScheduledCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    {statusScheduledCount}
+                                </div>
+                                <div className="text-sm text-blue-700">📌 Done PPM</div>
                             </div>
                         </>
                     )}

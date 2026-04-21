@@ -234,10 +234,11 @@ class ScheduleController extends Controller
                 'ppm_scheduled_by' => $die->ppm_scheduled_by,
                 'schedule_approved_at' => $die->schedule_approved_at?->format('d-M-Y H:i'),
                 'group_name' => $die->group_name,
-                'has_schedule_status' => collect($monthlyData)
-                    ->pluck('status')
-                    ->flatten()
-                    ->contains(fn($status) => $status === 'Done'),
+                'has_done_history' => $die->ppmHistories
+                    ->filter(fn($history) => $history->ppm_date)
+                    ->map(fn($history) => $history->ppm_date->format('Y-m-d'))
+                    ->unique()
+                    ->isNotEmpty(),
                 'needs_scheduling' => (function () use ($die, &$scheduledGroupNames) {
                     $needs = $die->last_lot_date && !$die->ppm_scheduled_date
                         && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]);
