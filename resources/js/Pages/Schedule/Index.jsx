@@ -26,7 +26,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     ) || 0;
 
     const statusScheduledCount = scheduleData?.reduce((sum, g) =>
-        sum + (g.dies?.filter(d => d.has_schedule_status).length || 0), 0
+        sum + (g.dies?.filter(d => d.has_done_history).length || 0), 0
     ) || 0;
 
     // Filter schedule data based on active filter
@@ -37,7 +37,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             dies: group.dies?.filter(d =>
                 scheduleFilter === 'needs_schedule' ? d.needs_scheduling
                 : scheduleFilter === 'already_scheduled' ? (d.ppm_scheduled_date && !d.needs_scheduling)
-                : scheduleFilter === 'status_scheduled' ? d.has_schedule_status
+                : scheduleFilter === 'status_scheduled' ? d.has_done_history
                 : true
             ) || [],
         })).filter(group => group.dies.length > 0);
