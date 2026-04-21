@@ -88,6 +88,8 @@ class DieController extends Controller
                 'next_ppm_stroke' => $die->next_ppm_stroke,
                 'ppm_count' => $die->ppm_count ?? 0,
                 'is_4lot_check' => $die->is_4lot_check,
+                'updated_at' => $die->updated_at?->format('d-M-Y H:i:s'),
+
             ];
         });
 

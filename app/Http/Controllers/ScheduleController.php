@@ -237,7 +237,7 @@ class ScheduleController extends Controller
                 'has_schedule_status' => collect($monthlyData)
                     ->pluck('status')
                     ->flatten()
-                    ->contains(fn($status) => !empty($status)),
+                    ->contains(fn($status) => $status === 'Done'),
                 'needs_scheduling' => (function () use ($die, &$scheduledGroupNames) {
                     $needs = $die->last_lot_date && !$die->ppm_scheduled_date
                         && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]);

@@ -2,17 +2,37 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DieChangeLog;
 use App\Models\DieModel;
 use App\Models\DieProcess;
 use App\Models\Customer;
 use App\Models\MachineModel;
 use App\Services\DieMonitoringService;
+use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class DieController extends Controller
 {
+    private const DIE_CHANGE_FIELD_LABELS = [
+        'part_number' => 'Part Number',
+        'part_name' => 'Part Name',
+        'machine_model_id' => 'Machine Model',
+        'customer_id' => 'Customer',
+        'qty_die' => 'Qty Dies',
+        'dies_size' => 'Dies Size',
+        'line' => 'Line',
+        'process_type' => 'Process Type',
+        'control_stroke' => 'Control Stroke',
+        'last_ppm_date' => 'Last PPM Date',
+        'accumulation_stroke' => 'Accumulation Stroke',
+        'location' => 'Location',
+        'notes' => 'Notes',
+        'is_4lot_check' => '4-Lot Check',
+        'group_name' => 'Group Name',
+    ];
+
     protected DieMonitoringService $monitoringService;
 
     public function __construct(DieMonitoringService $monitoringService)
@@ -88,8 +108,64 @@ class DieController extends Controller
             ->groupBy('line')
             ->pluck('total', 'line');
 
+        $historyPaginator = DieChangeLog::with(['die:id,part_number,part_name', 'user:id,name'])
+            ->when(!empty($filters['search']), function ($query) use ($filters) {
+                $search = $filters['search'];
+
+                $query->where(function ($nestedQuery) use ($search) {
+                    $nestedQuery->where('part_number', 'like', "%{$search}%")
+                        ->orWhere('part_name', 'like', "%{$search}%")
+                        ->orWhereHas('die', function ($dieQuery) use ($search) {
+                            $dieQuery->where('part_number', 'like', "%{$search}%")
+                                ->orWhere('part_name', 'like', "%{$search}%");
+                        });
+                });
+            })
+            ->when(!empty($filters['customer_id']), function ($query) use ($filters) {
+                $query->whereHas('die', function ($dieQuery) use ($filters) {
+                    $dieQuery->where('customer_id', $filters['customer_id']);
+                });
+            })
+            ->when(!empty($filters['machine_model_id']), function ($query) use ($filters) {
+                $query->whereHas('die', function ($dieQuery) use ($filters) {
+                    $dieQuery->where('machine_model_id', $filters['machine_model_id']);
+                });
+            })
+            ->when(!empty($filters['line']), function ($query) use ($filters) {
+                $query->whereHas('die', function ($dieQuery) use ($filters) {
+                    $dieQuery->where('line', $filters['line']);
+                });
+            })
+            ->orderByDesc('created_at')
+            ->paginate(15, ['*'], 'history_page');
+
+        $historyPaginator->through(function (DieChangeLog $log) {
+            $changes = collect($log->changed_fields ?? [])
+                ->map(function ($change, $field) {
+                    return [
+                        'field' => $field,
+                        'label' => $this->getDieFieldLabel($field),
+                        'old_value' => $change['old'] ?? '-',
+                        'new_value' => $change['new'] ?? '-',
+                    ];
+                })
+                ->values();
+
+            return [
+                'id' => $log->id,
+                'die_encrypted_id' => $log->die?->encrypted_id,
+                'part_number' => $log->part_number ?: $log->die?->part_number,
+                'part_name' => $log->part_name ?: $log->die?->part_name,
+                'changed_at' => $log->created_at?->format('d-M-Y H:i:s'),
+                'edited_by' => $log->user?->name ?? 'System',
+                'fields_changed' => $changes,
+                'total_changes' => $changes->count(),
+            ];
+        });
+
         return Inertia::render('Dies/Index', [
             'dies' => $paginator,
+            'dieChangeLogs' => $historyPaginator,
             'filters' => $filters,
             'customers' => Customer::active()->get(['id', 'code', 'name']),
             'machineModels' => MachineModel::with([
@@ -355,14 +431,41 @@ class DieController extends Controller
         $newAccumulationStroke = (int) ($validated['accumulation_stroke'] ?? 0);
 
         DB::transaction(function () use ($die, $validated, $newGroupName, $newAccumulationStroke) {
+            $trackedFields = array_keys($validated);
+            $beforeValues = $this->extractDieFieldValues($die, $trackedFields);
+
             // Update only this die's data (including group_name)
             $die->update($validated);
+            $die->refresh();
+
+            $changes = $this->buildDieChanges($trackedFields, $beforeValues, $this->extractDieFieldValues($die, $trackedFields));
+            if (!empty($changes)) {
+                $this->storeDieChangeLog($die, $changes);
+            }
 
             // Sync accumulation_stroke to dies with the same group_name
             if ($newGroupName) {
-                DieModel::where('group_name', $newGroupName)
+                $groupMembers = DieModel::query()
+                    ->where('group_name', $newGroupName)
                     ->where('id', '!=', $die->id)
-                    ->update(['accumulation_stroke' => $newAccumulationStroke]);
+                    ->get();
+
+                $groupMembers->each(function (DieModel $member) use ($newAccumulationStroke) {
+                    $memberBeforeValues = $this->extractDieFieldValues($member, ['accumulation_stroke']);
+
+                    $member->update(['accumulation_stroke' => $newAccumulationStroke]);
+                    $member->refresh();
+
+                    $memberChanges = $this->buildDieChanges(
+                        ['accumulation_stroke'],
+                        $memberBeforeValues,
+                        $this->extractDieFieldValues($member, ['accumulation_stroke'])
+                    );
+
+                    if (!empty($memberChanges)) {
+                        $this->storeDieChangeLog($member, $memberChanges);
+                    }
+                });
             }
         });
 
@@ -1049,5 +1152,94 @@ class DieController extends Controller
             ->orderBy('group_name')
             ->pluck('group_name')
             ->values();
+    }
+
+    private function extractDieFieldValues(DieModel $die, array $fields): array
+    {
+        $values = [];
+
+        foreach (array_unique($fields) as $field) {
+            $values[$field] = $this->normalizeDieFieldValue($field, $die->{$field});
+        }
+
+        return $values;
+    }
+
+    private function buildDieChanges(array $fields, array $beforeValues, array $afterValues): array
+    {
+        $changes = [];
+
+        foreach (array_unique($fields) as $field) {
+            $oldValue = $beforeValues[$field] ?? null;
+            $newValue = $afterValues[$field] ?? null;
+
+            if ($oldValue === $newValue) {
+                continue;
+            }
+
+            $changes[$field] = [
+                'old' => $this->formatDieFieldValueForDisplay($field, $oldValue),
+                'new' => $this->formatDieFieldValueForDisplay($field, $newValue),
+            ];
+        }
+
+        return $changes;
+    }
+
+    private function storeDieChangeLog(DieModel $die, array $changes): void
+    {
+        DieChangeLog::create([
+            'die_id' => $die->id,
+            'user_id' => auth()->id(),
+            'part_number' => $die->part_number,
+            'part_name' => $die->part_name,
+            'changed_fields' => $changes,
+        ]);
+    }
+
+    private function normalizeDieFieldValue(string $field, mixed $value): mixed
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $field === 'last_ppm_date'
+                ? $value->format('Y-m-d')
+                : $value->format('Y-m-d H:i:s');
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return str_contains((string) $value, '.') ? (float) $value : (int) $value;
+        }
+
+        if (is_string($value)) {
+            $trimmedValue = trim($value);
+
+            return $trimmedValue === '' ? null : $trimmedValue;
+        }
+
+        return $value;
+    }
+
+    private function formatDieFieldValueForDisplay(string $field, mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        return match ($field) {
+            'machine_model_id' => MachineModel::find($value)?->code ?? (string) $value,
+            'customer_id' => Customer::find($value)?->code ?? (string) $value,
+            'process_type' => ucwords(str_replace('_', ' ', (string) $value)),
+            'is_4lot_check' => $value ? 'Yes' : 'No',
+            'qty_die', 'control_stroke', 'accumulation_stroke' => number_format((int) $value),
+            default => (string) $value,
+        };
+    }
+
+    private function getDieFieldLabel(string $field): string
+    {
+        return self::DIE_CHANGE_FIELD_LABELS[$field] ?? ucwords(str_replace('_', ' ', $field));
     }
 }

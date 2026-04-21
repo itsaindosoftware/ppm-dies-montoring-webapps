@@ -175,6 +175,12 @@ class DieMonitoringService
             $dies = $query->get();
             $dies = $dies->filter(fn($die) => $die->ppm_status === $filters['status'])->values();
 
+            if ($filters['status'] === 'orange') {
+                $dies = $dies->sortByDesc(function ($die) {
+                    return optional($die->updated_at)?->timestamp ?? 0;
+                })->values();
+            }
+
             $page = (int) request()->input('page', 1);
             $slice = $dies->slice(($page - 1) * $perPage, $perPage)->values();
 
