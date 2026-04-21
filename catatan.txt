@@ -8,3 +8,10 @@
     maaf maksudnya bagaimna yang kode ini
  {die.accumulation_stroke?. toLocaleString()}
  diisi oleh jumlah akumulasi perhitungan total semua stroke_at_ppm berdasarkan satu part number, soalnya data di database yang ada di gambar, datanya ada
+
+
+21 - 04 - 2026
+kata pak didin yang halaman / modul schedule perlu diimporvement lagi agar pada saat load halaman lebih ringan
+
+scheduled in
+fitur clear 
