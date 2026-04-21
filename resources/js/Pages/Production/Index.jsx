@@ -10,7 +10,6 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
     const [dieId, setDieId] = useState(filters?.die_id || '');
     const searchTimeout = useRef(null);
     const isFirstRender = useRef(true);
-    const skipNextSearchEffect = useRef(false);
 
     const buildParams = useCallback((overrides = {}) => ({
         search: search || undefined,
@@ -35,11 +34,6 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
             return;
         }
 
-        if (skipNextSearchEffect.current) {
-            skipNextSearchEffect.current = false;
-            return;
-        }
-
         if (searchTimeout.current) {
             clearTimeout(searchTimeout.current);
         }
@@ -53,10 +47,9 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
                 clearTimeout(searchTimeout.current);
             }
         };
-    }, [search, handleFilter]);
+    }, [search]);
 
     const clearFilters = () => {
-        skipNextSearchEffect.current = true;
         setSearch('');
         setDateFrom('');
         setDateTo('');
