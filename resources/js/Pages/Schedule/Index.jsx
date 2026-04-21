@@ -26,7 +26,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     ) || 0;
 
     const statusScheduledCount = scheduleData?.reduce((sum, g) =>
-        sum + (g.dies?.filter(d => d.has_done_history).length || 0), 0
+        sum + (g.dies?.reduce((dieSum, d) => dieSum + (d.done_history_count || 0), 0) || 0), 0
     ) || 0;
 
     // Filter schedule data based on active filter
