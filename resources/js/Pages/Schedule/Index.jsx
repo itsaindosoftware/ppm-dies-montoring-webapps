@@ -15,6 +15,11 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
 
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
 
+    const hasScheduledInStatus = (die) => {
+        const statuses = Object.values(die.monthly_data || {}).flatMap((monthData) => monthData?.status || []);
+        return statuses.includes('Scheduled In');
+    };
+
     // Count dies that need scheduling
     const needsScheduleCount = scheduleData?.reduce((sum, g) =>
         sum + (g.dies?.filter(d => d.needs_scheduling).length || 0), 0
@@ -22,7 +27,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
 
     // Count dies already scheduled
     const alreadyScheduledCount = scheduleData?.reduce((sum, g) =>
-        sum + (g.dies?.filter(d => d.ppm_scheduled_date && !d.needs_scheduling).length || 0), 0
+        sum + (g.dies?.filter(d => hasScheduledInStatus(d)).length || 0), 0
     ) || 0;
 
     const statusScheduledCount = scheduleData?.reduce((sum, g) =>
@@ -36,7 +41,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             ...group,
             dies: group.dies?.filter(d =>
                 scheduleFilter === 'needs_schedule' ? d.needs_scheduling
-                : scheduleFilter === 'already_scheduled' ? (d.ppm_scheduled_date && !d.needs_scheduling)
+                : scheduleFilter === 'already_scheduled' ? hasScheduledInStatus(d)
                 : scheduleFilter === 'status_scheduled' ? d.has_done_history
                 : true
             ) || [],
@@ -78,6 +83,19 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
         }, {
             preserveState:  true,
         });
+    };
+
+    const clearFilters = () => {
+        const currentYear = new Date().getFullYear();
+
+        setSelectedYear(currentYear);
+        setSelectedMonth('');
+        setSelectedDate('');
+        setCustomerId('');
+        setTonnageId('');
+        setScheduleFilter('all');
+
+        router.get(route('schedule.index'));
     };
 
     const handleCellClick = (die, monthIdx, weekIdx, field, currentValue) => {
@@ -274,12 +292,20 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                 ))}
                             </select>
                         </div>
-                        <button
-                            onClick={handleFilter}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                        >
-                            🔍 Apply Filter
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleFilter}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                            >
+                                🔍 Apply Filter
+                            </button>
+                            <button
+                                onClick={clearFilters}
+                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
+                            >
+                                Reset
+                            </button>
+                        </div>
                     </div>
 
                     {/* MTN Dies: Schedule Status Filters */}
@@ -341,7 +367,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                     {scheduleFilter === 'needs_schedule'
                                         ? 'Showing dies that have a LOT date but have not been scheduled for PPM yet'
                                         : scheduleFilter === 'already_scheduled'
-                                            ? 'Showing dies that already have a PPM schedule'
+                                            ? 'Showing dies that currently have PPM status Scheduled In'
                                             : 'Showing dies that already have a PPM status marked Done'
                                     }
                                 </span>
