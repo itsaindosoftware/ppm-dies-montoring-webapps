@@ -129,6 +129,11 @@ class DieModel extends Model
         return $this->hasMany(PpmHistory::class, 'die_id');
     }
 
+    public function allPpmHistories()
+    {
+        return $this->hasMany(PpmHistory::class, 'die_id');
+    }
+
     public function changeLogs()
     {
         return $this->hasMany(DieChangeLog::class, 'die_id')->latest();
