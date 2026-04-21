@@ -333,7 +333,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                             : 'bg-blue-50 text-blue-800 border border-blue-300 hover:bg-blue-100'
                                     }`}
                                 >
-                                    📌 Status Scheduled ({statusScheduledCount})
+                                    📌 Done PPM ({statusScheduledCount})
                                 </button>
                             )}
                             {scheduleFilter !== 'all' && (
@@ -717,7 +717,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                 <div className={`text-2xl font-bold ${statusScheduledCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
                                     {statusScheduledCount}
                                 </div>
-                                <div className="text-sm text-blue-700">📌 Status Scheduled</div>
+                                <div className="text-sm text-blue-700">📌 Done PPM</div>
                             </div>
                         </>
                     )}
