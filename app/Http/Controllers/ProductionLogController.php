@@ -22,17 +22,26 @@ class ProductionLogController extends Controller
      */
     public function index(Request $request)
     {
+        $search = trim((string) $request->input('search', ''));
+
         $logs = ProductionLog::with(['die:id,part_number,part_name,qty_die,machine_model_id', 'die.machineModel:id,code', 'createdBy:id,name'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->whereHas('die', function ($dieQuery) use ($search) {
+                    $dieQuery->where('part_number', 'like', "%{$search}%")
+                        ->orWhere('part_name', 'like', "%{$search}%");
+                });
+            })
             ->when($request->date_from, fn($q, $date) => $q->where('production_date', '>=', $date))
             ->when($request->date_to, fn($q, $date) => $q->where('production_date', '<=', $date))
             ->when($request->die_id, fn($q, $dieId) => $q->where('die_id', $dieId))
             ->orderByDesc('production_date')
             ->orderByDesc('created_at')
-            ->paginate(50);
+            ->paginate(50)
+            ->withQueryString();
 
         return Inertia::render('Production/Index', [
             'logs' => $logs,
-            'filters' => $request->only(['date_from', 'date_to', 'die_id']),
+            'filters' => $request->only(['search', 'date_from', 'date_to', 'die_id']),
             'dies' => DieModel::active()->get(['id', 'part_number', 'part_name']),
         ]);
     }

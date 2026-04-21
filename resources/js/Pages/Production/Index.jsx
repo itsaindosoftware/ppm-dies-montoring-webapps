@@ -1,24 +1,63 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { confirmDelete, showSuccess } from '@/Utils/swal';
 
 export default function ProductionIndex({ auth, logs, filters, dies }) {
+    const [search, setSearch] = useState(filters?.search || '');
     const [dateFrom, setDateFrom] = useState(filters?.date_from || '');
     const [dateTo, setDateTo] = useState(filters?.date_to || '');
     const [dieId, setDieId] = useState(filters?.die_id || '');
+    const searchTimeout = useRef(null);
+    const isFirstRender = useRef(true);
+    const skipNextSearchEffect = useRef(false);
 
-    const handleFilter = () => {
+    const buildParams = useCallback((overrides = {}) => ({
+        search: search || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        die_id: dieId || undefined,
+        ...overrides,
+    }), [search, dateFrom, dateTo, dieId]);
+
+    const handleFilter = (overrides = {}) => {
         router.get(route('production.index'), {
-            date_from: dateFrom || undefined,
-            date_to: dateTo || undefined,
-            die_id: dieId || undefined,
+            ...buildParams(overrides),
         }, {
             preserveState: true,
+            preserveScroll: true,
         });
     };
 
+    useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+
+        if (skipNextSearchEffect.current) {
+            skipNextSearchEffect.current = false;
+            return;
+        }
+
+        if (searchTimeout.current) {
+            clearTimeout(searchTimeout.current);
+        }
+
+        searchTimeout.current = setTimeout(() => {
+            handleFilter({ search: search || undefined });
+        }, 400);
+
+        return () => {
+            if (searchTimeout.current) {
+                clearTimeout(searchTimeout.current);
+            }
+        };
+    }, [search, handleFilter]);
+
     const clearFilters = () => {
+        skipNextSearchEffect.current = true;
+        setSearch('');
         setDateFrom('');
         setDateTo('');
         setDieId('');
@@ -53,6 +92,7 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
                     <div className="flex gap-2">
                         <a
                             href={route('reports.production.excel', {
+                                search: search || undefined,
                                 date_from: dateFrom || undefined,
                                 date_to: dateTo || undefined,
                                 die_id: dieId || undefined,
@@ -73,6 +113,19 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
                 {/* Filters */}
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
                     <div className="flex flex-wrap gap-4 items-end">
+                        <div className="min-w-[280px] flex-1">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Search Part Number / Name
+                            </label>
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleFilter()}
+                                placeholder="Type part number or part name..."
+                                className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
+                            />
+                        </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Date From
@@ -130,7 +183,7 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
                 </div>
 
                 {/* Table */}
-                <div className="bg-white dark: bg-gray-800 rounded-lg shadow-sm overflow-hidden">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead className="bg-gray-50 dark:bg-gray-700">
@@ -162,7 +215,7 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 <Link
                                                     href={route('dies.show', { die: log.die_id })}
-                                                    className="text-blue-600 hover: text-blue-800 font-medium"
+                                                    className="text-blue-600 hover:text-blue-800 font-medium"
                                                 >
                                                     {log. die?. part_number}
                                                 </Link>
@@ -259,7 +312,7 @@ export default function ProductionIndex({ auth, logs, filters, dies }) {
                                                 link.active
                                                     ? 'bg-blue-600 text-white'
                                                     : link.url
-                                                        ? 'bg-white text-gray-700 hover: bg-gray-100 dark:bg-gray-800 dark:text-gray-300'
+                                                        ? 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300'
                                                         : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800'
                                             }`}
                                             dangerouslySetInnerHTML={{ __html: link.label }}

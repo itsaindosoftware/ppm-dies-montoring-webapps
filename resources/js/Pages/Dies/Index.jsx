@@ -41,6 +41,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     // Check if user can edit dies (admin or mtn_dies only)
     const canEditDies = ['admin', 'mtn_dies'].includes(auth.user.role);
     const canBatchAction = ['admin', 'mtn_dies', 'production', 'ppic'].includes(auth.user.role);
+    const isOrangeStatusSelected = (filters?.status || status) === 'orange';
 
     // Build params helper
     const buildParams = useCallback((overrides = {}) => {
@@ -922,10 +923,15 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Last PPM
-                                    </th>
+                                    </th>   
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Accumulation Stroke
                                     </th>
+                                    {isOrangeStatusSelected && (
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Updated At
+                                    </th>
+                                )}
                                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Actions
                                     </th>
@@ -1080,6 +1086,11 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                 {die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-'}
                                             </td>
+                                            {isOrangeStatusSelected && (
+                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                                {die.updated_at || '-'}
+                                            </td>
+                                        )}
                                             <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <Link
@@ -1116,7 +1127,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={canBatchAction ? 12 : 11} className="px-4 py-12 text-center">
+                                        <td colSpan={isOrangeStatusSelected ? (canBatchAction ? 15 : 14) : (canBatchAction ? 14 : 13)} className="px-4 py-12 text-center">
                                             <div className="flex flex-col items-center">
                                                 <i className="fas fa-box-open text-4xl text-gray-400 mb-2"></i>
                                                 <p className="text-gray-500 dark:text-gray-400">No dies found</p>
@@ -1215,6 +1226,11 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                         Status
                                     </th>
+                                    {isOrangeStatusSelected && (
+                                        <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
+                                            Updated At
+                                        </th>
+                                    )}
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider w-20">
                                         Actions
                                     </th>
@@ -1291,6 +1307,13 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                                 label={die.ppm_status_label}
                                             />
                                         </td>
+                                        {isOrangeStatusSelected && (
+                                            <td className="px-3 py-2 text-center">
+                                                <span className="text-sm text-gray-700 dark:text-gray-300">
+                                                    {die.updated_at || '-'}
+                                                </span>
+                                            </td>
+                                        )}
                                         <td className="px-3 py-2 text-center">
                                             <div className="flex items-center justify-center gap-1">
                                                 <Link
@@ -1327,7 +1350,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={11} className="px-4 py-12 text-center">
+                                    <td colSpan={isOrangeStatusSelected ? 14 : 13} className="px-4 py-12 text-center">
                                         <div className="flex flex-col items-center">
                                             <i className="fas fa-box-open text-4xl text-gray-400 mb-2"></i>
                                             <p className="text-gray-500 dark:text-gray-400">No dies found</p>

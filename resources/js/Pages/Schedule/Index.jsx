@@ -342,7 +342,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                         ? 'Showing dies that have a LOT date but have not been scheduled for PPM yet'
                                         : scheduleFilter === 'already_scheduled'
                                             ? 'Showing dies that already have a PPM schedule'
-                                            : 'Showing dies that already have a weekly schedule status'
+                                            : 'Showing dies that already have a PPM status marked Done'
                                     }
                                 </span>
                             )}
@@ -664,7 +664,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                         <div className="text-2xl font-bold text-gray-900">
                             {scheduleData?.reduce((sum, g) => sum + (g.dies?.length || 0), 0) || 0}
                         </div>
-                        <div className="text-sm text-gray-500">Total Dies</div>
+                        <div className="text-sm text-gray-500">Total Part Number</div>
                     </div>
                     <div className="bg-green-50 rounded-lg shadow-sm p-4 text-center border border-green-200">
                         <div className="text-2xl font-bold text-green-600">
