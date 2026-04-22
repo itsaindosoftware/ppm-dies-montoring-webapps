@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
-///s
+
 class DieController extends Controller
 {
     private const DIE_CHANGE_FIELD_LABELS = [
