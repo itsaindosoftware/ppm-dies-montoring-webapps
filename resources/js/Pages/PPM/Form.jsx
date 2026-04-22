@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
-import { getProcessTypeLabel } from '@/Utils/PpmChecklistData';
+import { getChecklistItems, getProcessTypeLabel } from '@/Utils/PpmChecklistData';
 // tinggal yang print pdf
 
 
@@ -11,6 +11,8 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const [partNumber, setPartNumber] = useState(filters?.part_number || '');
     const [partName, setPartName] = useState(filters?.part_name || '');
     const [processName, setProcessName] = useState(filters?.process_name || '');
+    const [showPrintImageModal, setShowPrintImageModal] = useState(false);
+    const [printIllustrationSrc, setPrintIllustrationSrc] = useState('');
     const searchTimeout = useRef(null);
 
     const histories = ppmHistories?.data || [];
@@ -89,13 +91,57 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const activeHistory = histories.find((item) => item.id === activeHistoryId) || histories[0] || null;
     const activeChecklist = activeHistory?.checklist_results || [];
 
+    const normalizeResult = (value) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        const isNormal = normalized === 'normal' || normalized === 'ok';
+        const isUnusual = !!normalized && !isNormal;
+
+        return { isNormal, isUnusual };
+    };
+
+    const printRowsCount = 12;
+    const checklistRows = Array.from({ length: printRowsCount }, (_, index) => activeChecklist[index] || null);
+    const standardStrokeValue = activeHistory?.die?.ppm_standard ?? activeHistory?.die?.standard_stroke ?? '-';
+
+    const getChecklistTranslation = (processType, itemNo) => {
+        if (!processType || !itemNo) {
+            return '-';
+        }
+
+        const templateItems = getChecklistItems(processType);
+        const found = templateItems.find((templateItem) => Number(templateItem.no) === Number(itemNo));
+
+        return found?.description_id || '-';
+    };
+
     const handleCloseModal = () => {
         setShowModal(false);
         router.visit(route('dashboard'));
     };
 
     const handlePrintPdf = () => {
-        window.print();
+        setShowPrintImageModal(true);
+    };
+
+    const handlePrintImageChange = (event) => {
+        const file = event.target.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            setPrintIllustrationSrc(String(reader.result || ''));
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handlePrintNow = () => {
+        setShowPrintImageModal(false);
+        setTimeout(() => {
+            window.print();
+        }, 80);
     };
 
     return (
@@ -108,12 +154,58 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
             <div className="py-6 px-6">
                 {showModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3">
+                        <style>{`
+                            @media print {
+                                @page {
+                                    size: A4 portrait;
+                                    margin: 8mm;
+                                }
+
+                                .print-sheet {
+                                    width: 100%;
+                                    min-height: 100%;
+                                    border: 2px solid #111;
+                                    color: #111;
+                                    background: #fff;
+                                    font-family: Arial, Helvetica, sans-serif;
+                                    display: flex;
+                                    flex-direction: column;
+                                }
+
+                                .print-border {
+                                    border: 1px solid #111;
+                                }
+
+                                .print-border-thick {
+                                    border: 2px solid #111;
+                                }
+
+                                .print-table {
+                                    border-collapse: collapse;
+                                    width: 100%;
+                                }
+
+                                .print-table th,
+                                .print-table td {
+                                    border: 1px solid #111;
+                                    padding: 1px 3px;
+                                    vertical-align: top;
+                                }
+
+                                .print-compact {
+                                    font-size: 9px;
+                                    line-height: 1.15;
+                                }
+
+                                .print-keep-together {
+                                    page-break-inside: avoid;
+                                    break-inside: avoid-page;
+                                }
+                            }
+                        `}</style>
                         <div className="w-full max-w-7xl h-[92vh] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700 flex flex-col">
                             <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">INSPECTION CHECK — PPM FORM (DONE)</h3>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Sumber data: tabel ppm_histories dengan status done.</p>
-                                </div>
+                                <div></div>
                                 <div className="flex items-center gap-2 print:hidden">
                                     <button
                                         type="button"
@@ -133,7 +225,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 </div>
                             </div>
 
-                            <div className="p-4 border-b border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-5 gap-3">
+                            <div className="p-4 border-b border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-5 gap-3 print:hidden">
                                 <div>
                                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">PPM Date</label>
                                     <input
@@ -210,7 +302,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 </div>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4">
+                            <div className="flex-1 overflow-y-auto p-4 print:hidden">
                                 {!activeHistory && (
                                     <div className="h-full flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
                                         Pilih tab proses untuk melihat detail form.
@@ -300,8 +392,147 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 )}
                             </div>
 
+                            <div className="hidden print:block p-2 text-[11px] leading-tight">
+                                <div className="print-sheet">
+                                    <div className="print-border-thick px-3 py-2">
+                                        <div className="grid grid-cols-12 items-center gap-2">
+                                            <div className="col-span-3">
+                                                <img
+                                                    src="/storage/logo-itsa2.png"
+                                                    alt="Indonesia Thai Summit Auto"
+                                                    className="h-14 w-auto object-contain"
+                                                />
+                                            </div>
+                                            <div className="col-span-9 text-center">
+                                                <h1 className="text-[18px] font-bold tracking-wide">INSPECTION CHECK PPM DIES</h1>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="print-border-thick border-t-0 px-2 py-2">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>PART NAME</span><span>:</span><span>{activeHistory?.die?.part_name || '-'}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>PART No.</span><span>:</span><span>{activeHistory?.die?.part_number || '-'}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>MODEL</span><span>:</span><span>{activeHistory?.die?.model || '-'}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>TOTAL STOKE</span><span>:</span><span>{activeHistory?.stroke_at_ppm || activeHistory?.die?.accumulation_stroke || '-'}</span>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>PM ID</span><span>:</span><span>{activeHistory?.id || '-'}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>DIES No.</span><span>:</span><span>{activeHistory?.die?.qty_die || '-'}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>CUSTOMER</span><span>:</span><span>{activeHistory?.die?.customer || '-'}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>STANDARD STROKE</span><span>:</span><span>{standardStrokeValue}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[85px_10px_1fr]">
+                                                    <span>TOLERANSI</span><span>:</span><span>1 Lot</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-[85px_10px_1fr]">
+                                            <span>PROCESS</span><span>:</span><span className="font-semibold">{getProcessTypeLabel(activeHistory?.process_type) || '-'}</span>
+                                        </div>
+                                    </div>
+
+                                    <table className="print-table print-compact">
+                                        <thead>
+                                            <tr>
+                                                <th rowSpan={2} className="w-[34px] text-center">No.</th>
+                                                <th rowSpan={2} className="text-center">CHECKLIST ITEM</th>
+                                                <th colSpan={2} className="w-[140px] text-center">Inspection result</th>
+                                                <th rowSpan={2} className="w-[170px] text-center">Remark</th>
+                                            </tr>
+                                            <tr>
+                                                <th className="w-[70px] text-center">Normal</th>
+                                                <th className="w-[70px] text-center">Unusual</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {checklistRows.map((item, index) => {
+                                                const resultFlags = normalizeResult(item?.result);
+
+                                                return (
+                                                    <tr key={`print-row-${index}`}>
+                                                        <td className="text-center">{item?.item_no || index + 1}</td>
+                                                        <td>
+                                                            <div>{item?.description || '-'}</div>
+                                                            <div className="text-[8px]">{item ? getChecklistTranslation(activeHistory?.process_type, item.item_no) : '-'}</div>
+                                                        </td>
+                                                        <td className="text-center align-middle">
+                                                            <span className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10px]">
+                                                                {resultFlags.isNormal ? 'v' : ''}
+                                                            </span>
+                                                        </td>
+                                                        <td className="text-center align-middle">
+                                                            <span className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10px]">
+                                                                {resultFlags.isUnusual ? 'v' : ''}
+                                                            </span>
+                                                        </td>
+                                                        <td>{item?.remark || ''}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+
+                                    <div className="print-keep-together">
+                                        <div className="print-border-thick border-t-0 px-2 py-2">
+                                            <div className="h-[110px] border border-gray-300 flex items-center justify-center overflow-hidden">
+                                                {printIllustrationSrc ? (
+                                                    <img
+                                                        src={printIllustrationSrc}
+                                                        alt="PPM Illustration"
+                                                        className="max-h-full max-w-full object-contain"
+                                                    />
+                                                ) : (
+                                                    <span className="text-[10px] text-gray-500">No illustration image selected</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="print-border-thick border-t-0 px-2 py-2">
+                                            <div className="font-semibold">Note</div>
+                                            <div className="min-h-[34px] whitespace-pre-wrap">
+                                                {activeHistory?.work_performed || activeHistory?.findings || '-'}
+                                            </div>
+                                        </div>
+
+                                        <div className="print-border-thick border-t-0 px-2 py-2">
+                                            <table className="print-table text-[11px]">
+                                                <tbody>
+                                                    <tr>
+                                                        <td className="w-1/3 text-center">Date</td>
+                                                        <td className="w-1/3 text-center">checked</td>
+                                                        <td className="w-1/3 text-center">Approved</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="h-10 text-center">{activeHistory?.ppm_date || '-'}</td>
+                                                        <td className="h-10 text-center">{activeHistory?.checked_by || '-'}</td>
+                                                        <td className="h-10 text-center">{activeHistory?.approved_by || '-'}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {ppmHistories?.links?.length > 3 && (
-                                <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-2">
+                                <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-2 print:hidden">
                                     {ppmHistories.links.map((link, index) => (
                                         <button
                                             key={index}
@@ -316,6 +547,52 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                             } ${!link.url ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                                         />
                                     ))}
+                                </div>
+                            )}
+
+                            {showPrintImageModal && (
+                                <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4 print:hidden">
+                                    <div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700">
+                                        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                                            <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Upload / Ganti Gambar Untuk Print PDF</h4>
+                                        </div>
+                                        <div className="p-4 space-y-3">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={handlePrintImageChange}
+                                                className="w-full text-sm"
+                                            />
+
+                                            <div className="h-44 border border-gray-300 rounded-md flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-700/30">
+                                                {printIllustrationSrc ? (
+                                                    <img
+                                                        src={printIllustrationSrc}
+                                                        alt="Preview"
+                                                        className="max-h-full max-w-full object-contain"
+                                                    />
+                                                ) : (
+                                                    <span className="text-xs text-gray-500">Belum ada gambar dipilih</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPrintImageModal(false)}
+                                                className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                                            >
+                                                Batal
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handlePrintNow}
+                                                className="px-3 py-1.5 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700"
+                                            >
+                                                Lanjut Print
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
