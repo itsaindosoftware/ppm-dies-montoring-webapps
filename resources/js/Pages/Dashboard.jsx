@@ -112,7 +112,7 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                                 <div className="space-y-2">
                                     {group.dies && group.dies.length > 0 ? (
                                         group.dies.map((die, idx) => {
-                                            const effStroke = die.accumulation_stroke || die.last_stroke || 0;
+                                            const effStroke = die.accumulation_stroke || 0;
                                             const effPct = die.standard_stroke > 0
                                                 ? Math.min(Math.round(effStroke / die.standard_stroke * 100), 100)
                                                 : die.stroke_percentage;

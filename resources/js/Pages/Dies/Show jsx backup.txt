@@ -73,7 +73,8 @@ export default function DieShow({ auth, die }) {
 
     // MTN Dies: Reschedule form
     const rescheduleForm = useForm({
-        new_date: '',
+        scheduled_date: '',
+        pic: auth.user.name,
         reason: '',
     });
 
@@ -179,9 +180,13 @@ export default function DieShow({ auth, die }) {
     const handleReschedule = (e) => {
         e.preventDefault();
         rescheduleForm.post(route('dies.reschedule', { die: die.encrypted_id }), {
+            preserveScroll: true,
             onSuccess: () => {
                 setShowRescheduleModal(false);
                 rescheduleForm.reset();
+            },
+            onError: (errors) => {
+                console.error('Reschedule errors:', errors);
             },
         });
     };
@@ -292,7 +297,7 @@ export default function DieShow({ auth, die }) {
                                 </button>
                             </>
                         )}
-                        {/* PPIC: Set Last LOT Date */}
+                        {/* PPIC: Set Next LOT Date */}
                         {isPpic && ['orange', 'red'].includes(die.ppm_status) && !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={() => setShowLotDateModal(true)}
@@ -392,7 +397,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* MTN Dies: Transfer Back to Production */}
-                        {isMtnDies && die.ppm_alert_status === 'ppm_completed' && (
+                        {/* {isMtnDies && die.ppm_alert_status === 'ppm_completed' && (
                             <button
                                 onClick={async () => {
                                     const ok = await confirmAction({
@@ -408,7 +413,7 @@ export default function DieShow({ auth, die }) {
                             >
                                 🏭 Transfer Back to Production
                             </button>
-                        )}
+                        )} */}
                     </div>
                 </div>
 
@@ -482,6 +487,10 @@ export default function DieShow({ auth, die }) {
                                 <div className="flex justify-between">
                                     <dt className="text-gray-500 dark:text-gray-400">Last Stroke</dt>
                                     <dd className="font-medium text-gray-900 dark:text-gray-100">{die.last_stroke ? die.last_stroke.toLocaleString() : '-'}</dd>
+                                </div>
+                                 <div className="flex justify-between">
+                                    <dt className="text-gray-500 dark:text-gray-400">Group Name</dt>
+                                    <dd className="font-medium text-gray-900 dark:text-gray-100">{die.group_name || '-'}</dd>
                                 </div>
                             </dl>
                         </div>
@@ -635,7 +644,7 @@ export default function DieShow({ auth, die }) {
                             </div>
                         )}
 
-                        {/* Multi-Process PPM Progress Card */}
+                        {/* Multi-Process PPM Progress Card, kalau sudah isi start ppm processing, muncul ini */}
                         {die.die_processes && die.die_processes.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -1476,7 +1485,7 @@ export default function DieShow({ auth, die }) {
                         <div className="p-6">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                                    📅 Set Last Date of LOT
+                                    📅 Set Next Date of LOT
                                 </h3>
                                 <button
                                     onClick={() => setShowLotDateModal(false)}
@@ -1536,7 +1545,7 @@ export default function DieShow({ auth, die }) {
                                         disabled={lotDateForm.processing}
                                         className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
                                     >
-                                        {lotDateForm.processing ? 'Saving...' : '✓ Set Last LOT Date'}
+                                        {lotDateForm.processing ? 'Saving...' : '✓ Set Next LOT Date'}
                                     </button>
                                 </div>
                             </form>
@@ -1798,13 +1807,13 @@ export default function DieShow({ auth, die }) {
                                     </label>
                                     <input
                                         type="date"
-                                        value={rescheduleForm.data.new_date}
-                                        onChange={(e) => rescheduleForm.setData('new_date', e.target.value)}
+                                        value={rescheduleForm.data.scheduled_date}
+                                        onChange={(e) => rescheduleForm.setData('scheduled_date', e.target.value)}
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
                                         required
                                     />
-                                    {rescheduleForm.errors.new_date && (
-                                        <p className="text-red-500 text-xs mt-1">{rescheduleForm.errors.new_date}</p>
+                                    {rescheduleForm.errors.scheduled_date && (
+                                        <p className="text-red-500 text-xs mt-1">{rescheduleForm.errors.scheduled_date}</p>
                                     )}
                                 </div>
                                 <div>

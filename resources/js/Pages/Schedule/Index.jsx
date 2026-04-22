@@ -15,10 +15,29 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
 
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
 
-    const hasScheduledInStatus = (die) => {
-        const statuses = Object.values(die.monthly_data || {}).flatMap((monthData) => monthData?.status || []);
-        return statuses.includes('Scheduled In');
+    const getLatestScheduleStatus = (die) => {
+        const monthlyEntries = Object.entries(die.monthly_data || {})
+            .sort(([monthA], [monthB]) => Number(monthA) - Number(monthB));
+
+        let latestStatus = null;
+
+        monthlyEntries.forEach(([, monthData]) => {
+            (monthData?.status || []).forEach((status) => {
+                if (status) {
+                    latestStatus = status;
+                }
+            });
+        });
+
+        return latestStatus;
     };
+
+    const hasOnlyScheduledInStatus = (die) => {
+        return getLatestScheduleStatus(die) === 'Scheduled In';
+    };
+
+    const hasOnlyDoneStatus = (die) => getLatestScheduleStatus(die) === 'Done';
+    
 
     // Count dies that need scheduling
     const needsScheduleCount = scheduleData?.reduce((sum, g) =>
@@ -27,11 +46,11 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
 
     // Count dies already scheduled
     const alreadyScheduledCount = scheduleData?.reduce((sum, g) =>
-        sum + (g.dies?.filter(d => hasScheduledInStatus(d)).length || 0), 0
+        sum + (g.dies?.filter(d => hasOnlyScheduledInStatus(d)).length || 0), 0
     ) || 0;
 
     const statusScheduledCount = scheduleData?.reduce((sum, g) =>
-        sum + (g.dies?.reduce((dieSum, d) => dieSum + (d.done_history_count || 0), 0) || 0), 0
+        sum + (g.dies?.filter(d => hasOnlyDoneStatus(d)).length || 0), 0
     ) || 0;
 
     // Filter schedule data based on active filter
@@ -41,8 +60,8 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             ...group,
             dies: group.dies?.filter(d =>
                 scheduleFilter === 'needs_schedule' ? d.needs_scheduling
-                : scheduleFilter === 'already_scheduled' ? hasScheduledInStatus(d)
-                : scheduleFilter === 'status_scheduled' ? d.has_done_history
+                : scheduleFilter === 'already_scheduled' ? hasOnlyScheduledInStatus(d)
+                : scheduleFilter === 'status_scheduled' ? hasOnlyDoneStatus(d)
                 : true
             ) || [],
         })).filter(group => group.dies.length > 0);
