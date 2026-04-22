@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DieChangeLog;
 use App\Models\DieModel;
 use App\Models\DieProcess;
+use App\Models\PpmHistory;
 use App\Models\Customer;
 use App\Models\MachineModel;
 use App\Services\DieMonitoringService;
@@ -177,6 +178,88 @@ class DieController extends Controller
                 ->get(['id', 'code', 'name', 'tonnage_standard_id']),
             'lines' => $lines,
             'lineStats' => $lineStats,
+        ]);
+    }
+
+    /**
+     * Display PPM Form list page with search filters.
+     */
+    public function ppmForm(Request $request)
+    {
+        $filters = $request->only(['ppm_date', 'part_number', 'part_name', 'process_name']);
+
+        $ppmHistories = PpmHistory::query()
+            ->with([
+                'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke',
+                'die.customer:id,code,name',
+                'die.machineModel:id,code',
+            ])
+            ->where('status', 'done')
+            ->when(!empty($filters['ppm_date']), function ($query) use ($filters) {
+                $query->whereDate('ppm_date', $filters['ppm_date']);
+            })
+            ->when(!empty($filters['part_number']), function ($query) use ($filters) {
+                $query->whereHas('die', function ($dieQuery) use ($filters) {
+                    $dieQuery->where('part_number', 'like', '%' . $filters['part_number'] . '%');
+                });
+            })
+            ->when(!empty($filters['part_name']), function ($query) use ($filters) {
+                $query->whereHas('die', function ($dieQuery) use ($filters) {
+                    $dieQuery->where('part_name', 'like', '%' . $filters['part_name'] . '%');
+                });
+            })
+            ->when(!empty($filters['process_name']), function ($query) use ($filters) {
+                $keyword = trim(strtolower($filters['process_name']));
+                $normalized = str_replace(' ', '_', $keyword);
+
+                $query->where(function ($nested) use ($keyword, $normalized) {
+                    $nested->where('process_type', 'like', '%' . $keyword . '%')
+                        ->orWhere('process_type', 'like', '%' . $normalized . '%');
+                });
+            })
+            ->orderByDesc('ppm_date')
+            ->orderByDesc('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        $ppmHistories->through(function (PpmHistory $history) {
+            $die = $history->die;
+
+            return [
+                'id' => $history->id,
+                'ppm_date' => $history->ppm_date,
+                'pic' => $history->pic,
+                'status' => $history->status,
+                'maintenance_type' => $history->maintenance_type,
+                'process_type' => $history->process_type,
+                'checklist_results' => $history->checklist_results,
+                'work_performed' => $history->work_performed,
+                'parts_replaced' => $history->parts_replaced,
+                'findings' => $history->findings,
+                'recommendations' => $history->recommendations,
+                'checked_by' => $history->checked_by,
+                'approved_by' => $history->approved_by,
+                'stroke_at_ppm' => $history->stroke_at_ppm,
+                'ppm_number' => $history->ppm_number,
+                'created_at' => $history->created_at?->toIso8601String(),
+                'die' => [
+                    'id' => $die?->id,
+                    'encrypted_id' => $die?->encrypted_id,
+                    'part_number' => $die?->part_number,
+                    'part_name' => $die?->part_name,
+                    'line' => $die?->line,
+                    'qty_die' => $die?->qty_die,
+                    'model' => $die?->machineModel?->code,
+                    'customer' => $die?->customer?->code,
+                    'total_stroke' => $die?->accumulation_stroke,
+                    'standard_stroke' => $die?->standard_stroke,
+                ],
+            ];
+        });
+
+        return Inertia::render('PPM/Form', [
+            'ppmHistories' => $ppmHistories,
+            'filters' => $filters,
         ]);
     }
 
