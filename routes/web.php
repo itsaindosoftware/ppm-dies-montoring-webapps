@@ -103,6 +103,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     // Dies Management - View for admin, mtn_dies, mgr_gm, md, ppic
+    Route::get('ppm-form', [DieController::class, 'ppmForm'])->name('ppm-form.index');
     Route::get('dies', [DieController::class, 'index'])->name('dies.index');
     Route::get('dies/{die}', [DieController::class, 'show'])->name('dies.show');
 
@@ -112,10 +113,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('production/import', [ProductionLogController::class, 'import'])->name('production.import');
     });
 
-    // Schedule Calendar - admin, mtn_dies, ppic
-    Route::middleware(['role:admin,mtn_dies,ppic'])->group(function () {
+    // Schedule Calendar view - admin, mtn_dies, ppic, production
+    Route::middleware(['role:admin,mtn_dies,ppic,production'])->group(function () {
         Route::get('/schedule', [ScheduleController::class, 'index'])->name('schedule.index');
-        Route::post('/schedule/update-cell', [ScheduleController:: class, 'updateCell'])->name('schedule.update-cell');
+    });
+
+    // Schedule Calendar edit - admin, mtn_dies only
+    Route::middleware(['role:admin,mtn_dies'])->group(function () {
+        Route::post('/schedule/update-cell', [ScheduleController::class, 'updateCell'])->name('schedule.update-cell');
     });
 
     // Tonnage Standards - admin, mtn_dies only
@@ -144,7 +149,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/dies/excel', [ReportController::class, 'exportDiesExcel'])
         ->name('reports.dies.excel');
-    Route::get('/reports/dies/pdf', [ReportController:: class, 'exportDiesPdf'])
+    Route::get('/reports/dies/pdf', [ReportController::class, 'exportDiesPdf'])
         ->name('reports.dies.pdf');
     Route::get('/reports/critical/pdf', [ReportController::class, 'exportCriticalPdf'])
         ->name('reports.critical.pdf');
@@ -210,4 +215,4 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-require __DIR__. '/auth.php';
+require __DIR__ . '/auth.php';

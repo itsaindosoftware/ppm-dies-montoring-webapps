@@ -213,10 +213,10 @@ export default function DieEdit({ auth, die, customers, machineModels, groupName
                                             🔗 Die Group (Stroke Accumulation Group)
                                         </h4>
                                         <p className="text-xs text-blue-700 dark:text-blue-400 mb-3">
-                                            Dies dengan Group Name yang sama akan berbagi Accumulation Stroke.
+                                           Dies with the same Group Name will share Accumulation Stroke.
                                             <br />
-                                            Jika Group Name diubah, hanya data dies ini yang berubah Group Name-nya.
-                                            Accumulation Stroke akan di-sync ke semua dies dengan Group Name yang sama.
+                                            If the Group Name is changed, only this die's Group Name will be updated.
+                                            Accumulation Stroke will be synced to all dies with the same Group Name.
                                         </p>
                                         <div>
                                             <label className="block text-xs font-medium text-blue-800 dark:text-blue-300 mb-1">

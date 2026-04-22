@@ -14,6 +14,8 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     const tableRef = useRef(null);
 
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
+    const canEditSchedule = ['admin', 'mtn_dies'].includes(auth.user.role);
+    const canUseScheduleStatusFilters = ['admin', 'mtn_dies', 'ppic', 'production'].includes(auth.user.role);
 
     const getLatestScheduleStatus = (die) => {
         const monthlyEntries = Object.entries(die.monthly_data || {})
@@ -52,6 +54,9 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     const statusScheduledCount = scheduleData?.reduce((sum, g) =>
         sum + (g.dies?.filter(d => hasOnlyDoneStatus(d)).length || 0), 0
     ) || 0;
+
+    const hasVisibleScheduleFilters = alreadyScheduledCount > 0 || statusScheduledCount > 0 || (isMtnDies && needsScheduleCount > 0);
+    const summaryGridCols = isMtnDies ? 'grid-cols-7' : canUseScheduleStatusFilters ? 'grid-cols-6' : 'grid-cols-4';
 
     // Filter schedule data based on active filter
     const filteredScheduleData = scheduleFilter === 'all'
@@ -173,7 +178,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     };
 
     const renderEditableCell = (die, monthIdx, weekIdx, field, value, displayValue) => {
-        const isEditable = ['forecast', 'plan', 'stroke', 'ppm_date', 'pic'].includes(field);
+        const isEditable = canEditSchedule && ['forecast', 'plan', 'stroke', 'ppm_date', 'pic'].includes(field);
 
         return (
             <td
@@ -327,8 +332,8 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                         </div>
                     </div>
 
-                    {/* MTN Dies: Schedule Status Filters */}
-                    {isMtnDies && (needsScheduleCount > 0 || alreadyScheduledCount > 0 || statusScheduledCount > 0) && (
+                    {/* Schedule Status Filters */}
+                    {canUseScheduleStatusFilters && hasVisibleScheduleFilters && (
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             <span className="text-xs font-medium text-gray-500 mr-1">Filter:</span>
                             <button
@@ -341,7 +346,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                             >
                                 📋 All
                             </button>
-                            {needsScheduleCount > 0 && (
+                            {isMtnDies && needsScheduleCount > 0 && (
                                 <button
                                     onClick={() => setScheduleFilter(scheduleFilter === 'needs_schedule' ? 'all' : 'needs_schedule')}
                                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
@@ -395,10 +400,12 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                     )}
 
                     {/* Edit hint */}
-                    <div className="mt-3 text-xs text-gray-500 flex items-center gap-1">
-                        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">💡 Tip:</span>
-                        <span>Click on Stroke, PPM Date, or PIC cells to edit them</span>
-                    </div>
+                    {canEditSchedule && (
+                        <div className="mt-3 text-xs text-gray-500 flex items-center gap-1">
+                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">💡 Tip:</span>
+                            <span>Click on Stroke, PPM Date, or PIC cells to edit them</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Schedule Table */}
@@ -704,7 +711,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                 </div>
 
                 {/* Summary Stats */}
-                <div className={`mt-4 grid gap-4 ${isMtnDies ? 'grid-cols-7' : 'grid-cols-4'}`}>
+                <div className={`mt-4 grid gap-4 ${summaryGridCols}`}>
                     <div className="bg-white rounded-lg shadow-sm p-4 text-center">
                         <div className="text-2xl font-bold text-gray-900">
                             {scheduleData?.reduce((sum, g) => sum + (g.dies?.length || 0), 0) || 0}
@@ -729,19 +736,21 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                         </div>
                         <div className="text-sm text-red-700">Critical</div>
                     </div>
-                    {isMtnDies && (
+                    {canUseScheduleStatusFilters && (
                         <>
-                            <div
-                                onClick={() => setScheduleFilter(scheduleFilter === 'needs_schedule' ? 'all' : 'needs_schedule')}
-                                className={`rounded-lg shadow-sm p-4 text-center border cursor-pointer transition hover:shadow-md ${
-                                    needsScheduleCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'
-                                } ${scheduleFilter === 'needs_schedule' ? 'ring-2 ring-amber-400' : ''}`}
-                            >
-                                <div className={`text-2xl font-bold ${needsScheduleCount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                                    {needsScheduleCount}
+                            {isMtnDies && (
+                                <div
+                                    onClick={() => setScheduleFilter(scheduleFilter === 'needs_schedule' ? 'all' : 'needs_schedule')}
+                                    className={`rounded-lg shadow-sm p-4 text-center border cursor-pointer transition hover:shadow-md ${
+                                        needsScheduleCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'
+                                    } ${scheduleFilter === 'needs_schedule' ? 'ring-2 ring-amber-400' : ''}`}
+                                >
+                                    <div className={`text-2xl font-bold ${needsScheduleCount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                                        {needsScheduleCount}
+                                    </div>
+                                    <div className="text-sm text-amber-700">🔔 Needs Scheduling</div>
                                 </div>
-                                <div className="text-sm text-amber-700">🔔 Needs Scheduling</div>
-                            </div>
+                            )}
                             <div
                                 onClick={() => setScheduleFilter(scheduleFilter === 'already_scheduled' ? 'all' : 'already_scheduled')}
                                 className={`rounded-lg shadow-sm p-4 text-center border cursor-pointer transition hover:shadow-md ${
@@ -770,7 +779,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             </div>
 
             {/* Edit Modal */}
-            {showEditModal && editingCell && (
+            {canEditSchedule && showEditModal && editingCell && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
                         <div className="p-6">
