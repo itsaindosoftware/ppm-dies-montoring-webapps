@@ -256,7 +256,8 @@ class DashboardController extends Controller
 
     protected function getDashboardStrokeValue(array $die): int
     {
-        return (int) ($die['accumulation_stroke'] ?: $die['last_stroke'] ?: 0);
+        // return (int) ($die['accumulation_stroke'] ?: $die['last_stroke'] ?: 0);
+        return (int) ($die['accumulation_stroke'] ?? 0);
     }
 
     /**

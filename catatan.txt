@@ -15,3 +15,8 @@ kata pak didin yang halaman / modul schedule perlu diimporvement lagi agar pada 
 
 scheduled in
 fitur clear 
+
+utf8mb4_general_ci
+
+password
+adminsakti

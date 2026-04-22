@@ -397,7 +397,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* MTN Dies: Transfer Back to Production */}
-                        {isMtnDies && die.ppm_alert_status === 'ppm_completed' && (
+                        {/* {isMtnDies && die.ppm_alert_status === 'ppm_completed' && (
                             <button
                                 onClick={async () => {
                                     const ok = await confirmAction({
@@ -413,7 +413,7 @@ export default function DieShow({ auth, die }) {
                             >
                                 🏭 Transfer Back to Production
                             </button>
-                        )}
+                        )} */}
                     </div>
                 </div>
 

@@ -551,6 +551,11 @@ class DieController extends Controller
      */
     public function startPpmProcessing(Request $request, DieModel $die)
     {
+        if ($die->ppm_alert_status !== 'transferred_to_mtn' || !$die->transferred_at) {
+            return redirect()->back()
+                ->with('error', 'Cannot start PPM Processing. Die must be transferred by Production to MTN Dies first.');
+        }
+
         $validated = $request->validate([
             'process_types' => 'nullable|array',
             'process_types.*' => 'in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
