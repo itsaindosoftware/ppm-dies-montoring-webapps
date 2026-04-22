@@ -48,7 +48,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
             part_name: partName || undefined,
             process_name: processName || undefined,
             ...overrides,
-        };
+        }; 
 
         Object.keys(params).forEach((key) => {
             if (!params[key]) delete params[key];
