@@ -347,6 +347,8 @@ class ScheduleController extends Controller
      */
     public function updateCell(Request $request)
     {
+        abort_unless(in_array(auth()->user()?->role, ['admin', 'mtn_dies'], true), 403);
+
         $validated = $request->validate([
             'die_id' => 'required|exists:dies,id',
             'year' => 'required|integer',

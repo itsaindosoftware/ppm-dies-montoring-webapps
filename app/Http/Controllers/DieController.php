@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
+// s
 
 class DieController extends Controller
 {
@@ -635,6 +636,11 @@ class DieController extends Controller
      */
     public function startPpmProcessing(Request $request, DieModel $die)
     {
+        if (!$die->schedule_approved_at) {
+            return redirect()->back()
+                ->with('error', 'Cannot start PPM Processing. PPM schedule must be confirmed by PPIC first.');
+        }
+
         if ($die->ppm_alert_status !== 'transferred_to_mtn' || !$die->transferred_at) {
             return redirect()->back()
                 ->with('error', 'Cannot start PPM Processing. Die must be transferred by Production to MTN Dies first.');

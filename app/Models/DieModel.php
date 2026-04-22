@@ -431,9 +431,12 @@ class DieModel extends Model
         $ppmNumber = ($this->ppm_count ?? 0) + 1;
         $standardStroke = number_format($this->standard_stroke);
 
+        // ini untuk ganti teks status di dies list nya
         return match ($this->ppm_status) {
-            'red' => "🔴 CRITICAL - PPM #{$ppmNumber} Required! (at {$standardStroke} strokes)",
-            'orange' => "🟠 WARNING - Approaching PPM #{$ppmNumber} (at {$standardStroke} strokes)",
+            // 'red' => "🔴 CRITICAL - PPM #{$ppmNumber} Required! (at {$standardStroke} strokes)",
+            // 'orange' => "🟠 WARNING - Approaching PPM #{$ppmNumber} (at {$standardStroke} strokes)",
+            'red' => "🔴 RED",
+            'orange' => "🟠 ORANGE",
             'green' => '🟢 OK - Within Normal Limit',
             default => 'Unknown',
         };

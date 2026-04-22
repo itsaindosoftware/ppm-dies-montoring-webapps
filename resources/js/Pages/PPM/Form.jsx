@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import { getProcessTypeLabel } from '@/Utils/PpmChecklistData';
-
+// tinggal yang print pdf
 
 
 export default function PpmFormIndex({ auth, ppmHistories, filters }) {

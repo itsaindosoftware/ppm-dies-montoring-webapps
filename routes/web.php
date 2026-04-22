@@ -113,9 +113,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('production/import', [ProductionLogController::class, 'import'])->name('production.import');
     });
 
-    // Schedule Calendar - admin, mtn_dies, ppic
-    Route::middleware(['role:admin,mtn_dies,ppic'])->group(function () {
+    // Schedule Calendar view - admin, mtn_dies, ppic, production
+    Route::middleware(['role:admin,mtn_dies,ppic,production'])->group(function () {
         Route::get('/schedule', [ScheduleController::class, 'index'])->name('schedule.index');
+    });
+
+    // Schedule Calendar edit - admin, mtn_dies only
+    Route::middleware(['role:admin,mtn_dies'])->group(function () {
         Route::post('/schedule/update-cell', [ScheduleController::class, 'updateCell'])->name('schedule.update-cell');
     });
 
