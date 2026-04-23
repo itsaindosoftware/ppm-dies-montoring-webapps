@@ -61,33 +61,43 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
 
     public function collection()
     {
-        $histories = PpmHistory::with(['die.customer', 'die.machineModel', 'die.dieProcesses'])
+        $groupedHistories = PpmHistory::with(['die.customer', 'die.machineModel'])
             ->whereBetween('ppm_date', [$this->dateFrom, $this->dateTo])
             ->orderByDesc('ppm_date')
-            ->get();
+            ->orderBy('die_id')
+            ->orderBy('id')
+            ->get()
+            ->groupBy(function ($history) {
+                return $history->die_id . '|' . $history->ppm_date->format('Y-m-d');
+            })
+            ->values();
 
         $rows = collect();
         $index = 0;
 
-        foreach ($histories as $history) {
+        foreach ($groupedHistories as $histories) {
             $index++;
-            $rows->push($this->buildRow($history, $index));
+            $rows->push($this->buildRow($histories, $index));
         }
 
         return $rows;
     }
 
-    protected function buildRow(PpmHistory $history, int $index): array
+    protected function buildRow($histories, int $index): array
     {
-        // Get die processes ordered by process_order, fill up to 7 slots
-        $dieProcesses = $history->die?->dieProcesses?->sortBy('process_order')->values() ?? collect();
-        $processSlots = [];
-        for ($i = 0; $i < 7; $i++) {
-            $proc = $dieProcesses[$i] ?? null;
-            $processSlots[] = $proc
-                ? ucwords(str_replace('_', ' + ', $proc->process_type))
-                : '-';
-        }
+        $history = $histories->first();
+
+        $processSlots = $histories
+            ->pluck('process_type')
+            ->filter()
+            ->unique()
+            ->map(function ($process) {
+                return ucwords(str_replace('_', ' + ', $process));
+            })
+            ->values()
+            ->pad(7, '-')
+            ->take(7)
+            ->all();
 
         return [
             'no' => $index,
@@ -147,4 +157,3 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
         return [];
     }
 }
-`
