@@ -13,6 +13,24 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const [processName, setProcessName] = useState(filters?.process_name || '');
     const [showPrintImageModal, setShowPrintImageModal] = useState(false);
     const [printIllustrationSrc, setPrintIllustrationSrc] = useState('');
+    const [printImageFile, setPrintImageFile] = useState(null);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [formError, setFormError] = useState('');
+    const [editForm, setEditForm] = useState({
+        ppm_date: '',
+        pic: '',
+        maintenance_type: 'routine',
+        process_type: '',
+        checklist_results: [],
+        work_performed: '',
+        parts_replaced: '',
+        findings: '',
+        recommendations: '',
+        checked_by: '',
+        approved_by: '',
+        illustration_image: null,
+    });
     const searchTimeout = useRef(null);
 
     const histories = ppmHistories?.data || [];
@@ -27,14 +45,32 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         return aTime - bTime;
     });
 
-    const [activeHistoryId, setActiveHistoryId] = useState(sortedHistories[0]?.id || null);
+    const latestHistoryByPartAndProcess = [...sortedHistories]
+        .sort((a, b) => {
+            const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
+            const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+            if (aTime === bTime) {
+                return (b?.id || 0) - (a?.id || 0);
+            }
+            return bTime - aTime;
+        })
+        .reduce((acc, history) => {
+            const key = `${history?.die?.part_number || '-'}__${history?.process_type || '-'}`;
+            if (!acc.some((item) => `${item?.die?.part_number || '-'}__${item?.process_type || '-'}` === key)) {
+                acc.push(history);
+            }
+            return acc;
+        }, []);
 
-    const processTabs = sortedHistories.reduce((acc, history) => {
-        const key = history.process_type || 'unknown';
-        if (!acc.find((tab) => tab.process_type === key)) {
+    const [activeHistoryId, setActiveHistoryId] = useState(latestHistoryByPartAndProcess[0]?.id || null);
+
+    const processTabs = latestHistoryByPartAndProcess.reduce((acc, history) => {
+        const key = `${history?.die?.part_number || '-'}__${history?.process_type || 'unknown'}`;
+        if (!acc.find((tab) => tab.key === key)) {
             acc.push({
-                process_type: key,
-                label: getProcessTypeLabel(history.process_type),
+                key,
+                process_type: history.process_type,
+                label: `${history?.die?.part_number || '-'} - ${getProcessTypeLabel(history.process_type)}`,
                 historyId: history.id,
             });
         }
@@ -42,7 +78,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     }, []);
 
     useEffect(() => {
-        setActiveHistoryId(sortedHistories[0]?.id || null);
+        setActiveHistoryId(latestHistoryByPartAndProcess[0]?.id || null);
     }, [ppmHistories?.data]);
 
     const applyFilters = (overrides = {}) => {
@@ -88,8 +124,33 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         router.get(route('ppm-form.index'));
     };
 
-    const activeHistory = histories.find((item) => item.id === activeHistoryId) || histories[0] || null;
+    const activeHistory = latestHistoryByPartAndProcess.find((item) => item.id === activeHistoryId) || latestHistoryByPartAndProcess[0] || null;
     const activeChecklist = activeHistory?.checklist_results || [];
+
+    useEffect(() => {
+        if (!activeHistory) {
+            return;
+        }
+
+        setEditForm({
+            ppm_date: activeHistory.ppm_date || '',
+            pic: activeHistory.pic || '',
+            maintenance_type: activeHistory.maintenance_type || 'routine',
+            process_type: activeHistory.process_type || '',
+            checklist_results: (activeHistory.checklist_results || []).map((item) => ({ ...item })),
+            work_performed: activeHistory.work_performed || '',
+            parts_replaced: activeHistory.parts_replaced || '',
+            findings: activeHistory.findings || '',
+            recommendations: activeHistory.recommendations || '',
+            checked_by: activeHistory.checked_by || '',
+            approved_by: activeHistory.approved_by || '',
+            illustration_image: null,
+        });
+
+        if (!printImageFile) {
+            setPrintIllustrationSrc(activeHistory.illustration_url || '');
+        }
+    }, [activeHistoryId, ppmHistories?.data]);
 
     const normalizeResult = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
@@ -120,7 +181,11 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     };
 
     const handlePrintPdf = () => {
-        setShowPrintImageModal(true);
+        setFormError('');
+        setShowPrintImageModal(false);
+        setTimeout(() => {
+            window.print();
+        }, 80);
     };
 
     const handlePrintImageChange = (event) => {
@@ -130,6 +195,8 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
             return;
         }
 
+        setPrintImageFile(file);
+
         const reader = new FileReader();
         reader.onload = () => {
             setPrintIllustrationSrc(String(reader.result || ''));
@@ -137,12 +204,134 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         reader.readAsDataURL(file);
     };
 
+    const buildUpdatePayload = (history, overrides = {}) => {
+        return {
+            ppm_date: overrides.ppm_date ?? history?.ppm_date ?? '',
+            pic: overrides.pic ?? history?.pic ?? '',
+            maintenance_type: overrides.maintenance_type ?? history?.maintenance_type ?? 'routine',
+            process_type: overrides.process_type ?? history?.process_type ?? '',
+            checklist_results: overrides.checklist_results ?? history?.checklist_results ?? [],
+            work_performed: overrides.work_performed ?? history?.work_performed ?? '',
+            parts_replaced: overrides.parts_replaced ?? history?.parts_replaced ?? '',
+            findings: overrides.findings ?? history?.findings ?? '',
+            recommendations: overrides.recommendations ?? history?.recommendations ?? '',
+            checked_by: overrides.checked_by ?? history?.checked_by ?? '',
+            approved_by: overrides.approved_by ?? history?.approved_by ?? '',
+            ...(overrides.illustration_image ? { illustration_image: overrides.illustration_image } : {}),
+        };
+    };
+
+    const handleEditInputChange = (field, value) => {
+        setEditForm((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
+
+    const handleChecklistFieldChange = (index, field, value) => {
+        setEditForm((prev) => {
+            const nextChecklist = [...(prev.checklist_results || [])];
+            const currentItem = nextChecklist[index] || {};
+
+            nextChecklist[index] = {
+                ...currentItem,
+                [field]: value,
+            };
+
+            return {
+                ...prev,
+                checklist_results: nextChecklist,
+            };
+        });
+    };
+
+    const handleEditImageChange = (event) => {
+        const file = event.target.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        setEditForm((prev) => ({
+            ...prev,
+            illustration_image: file,
+        }));
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            setPrintIllustrationSrc(String(reader.result || ''));
+            setPrintImageFile(file);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleSubmitEdit = (event) => {
+        event.preventDefault();
+
+        if (!activeHistory) {
+            return;
+        }
+
+        setIsSaving(true);
+        setFormError('');
+
+        router.post(route('ppm-form.update', activeHistory.id), buildUpdatePayload(activeHistory, editForm), {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                setShowEditModal(false);
+            },
+            onError: () => {
+                setFormError('Gagal menyimpan data. Pastikan field wajib sudah terisi.');
+            },
+            onFinish: () => {
+                setIsSaving(false);
+            },
+        });
+    };
+
     const handlePrintNow = () => {
+        if (!activeHistory) {
+            return;
+        }
+
+        setFormError('');
+
+        if (printImageFile) {
+            setIsSaving(true);
+            router.post(
+                route('ppm-form.update', activeHistory.id),
+                buildUpdatePayload(activeHistory, { illustration_image: printImageFile }),
+                {
+                    forceFormData: true,
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setShowPrintImageModal(false);
+                        setPrintImageFile(null);
+                        setTimeout(() => {
+                            window.print();
+                        }, 80);
+                    },
+                    onError: () => {
+                        setFormError('Upload gambar gagal disimpan ke database.');
+                    },
+                    onFinish: () => {
+                        setIsSaving(false);
+                    },
+                }
+            );
+
+            return;
+        }
+
         setShowPrintImageModal(false);
         setTimeout(() => {
             window.print();
         }, 80);
     };
+
+    const filledChecklistCount = (editForm.checklist_results || []).filter((item) => item?.result).length;
+    const totalChecklistCount = (editForm.checklist_results || []).length;
 
     return (
         <AppLayout
@@ -161,15 +350,52 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                     margin: 8mm;
                                 }
 
+                                html,
+                                body {
+                                    width: 210mm;
+                                    height: 297mm;
+                                    margin: 0 !important;
+                                    padding: 0 !important;
+                                    overflow: hidden !important;
+                                }
+
+                                body * {
+                                    visibility: hidden !important;
+                                }
+
+                                .print-only,
+                                .print-only * {
+                                    visibility: visible !important;
+                                }
+
+                                .print-only {
+                                    position: fixed;
+                                    inset: 0;
+                                    background: #fff;
+                                    z-index: 9999;
+                                    padding: 8mm;
+                                    margin: 0;
+                                    box-sizing: border-box;
+                                    overflow: hidden;
+                                    display: flex;
+                                    justify-content: center;
+                                    align-items: flex-start;
+                                }
+
                                 .print-sheet {
-                                    width: 100%;
-                                    min-height: 100%;
+                                    width: 194mm;
+                                    height: 281mm;
+                                    max-width: 194mm;
+                                    max-height: 281mm;
                                     border: 2px solid #111;
                                     color: #111;
                                     background: #fff;
                                     font-family: Arial, Helvetica, sans-serif;
                                     display: flex;
                                     flex-direction: column;
+                                    overflow: hidden;
+                                    page-break-after: avoid;
+                                    break-after: avoid-page;
                                 }
 
                                 .print-border {
@@ -188,16 +414,21 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 .print-table th,
                                 .print-table td {
                                     border: 1px solid #111;
-                                    padding: 1px 3px;
+                                    padding: 1px 2px;
                                     vertical-align: top;
                                 }
 
                                 .print-compact {
-                                    font-size: 9px;
-                                    line-height: 1.15;
+                                    font-size: 8px;
+                                    line-height: 1.05;
                                 }
 
                                 .print-keep-together {
+                                    page-break-inside: avoid;
+                                    break-inside: avoid-page;
+                                }
+
+                                .print-sheet * {
                                     page-break-inside: avoid;
                                     break-inside: avoid-page;
                                 }
@@ -283,10 +514,10 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 )}
                                 <div className="flex flex-wrap gap-2">
                                     {processTabs.map((tab) => {
-                                        const isActive = activeHistory?.process_type === tab.process_type;
+                                        const isActive = activeHistory?.id === tab.historyId;
                                         return (
                                             <button
-                                                key={tab.process_type}
+                                                key={tab.key}
                                                 type="button"
                                                 onClick={() => setActiveHistoryId(tab.historyId)}
                                                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
@@ -312,9 +543,21 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 {activeHistory && (
                                     <div className="space-y-4">
                                         <div className="rounded-xl bg-gray-50 dark:bg-gray-700/30 p-4 border border-gray-200 dark:border-gray-700">
-                                            <h4 className="text-base font-semibold text-gray-800 dark:text-gray-100">
-                                                INSPECTION CHECK - {getProcessTypeLabel(activeHistory.process_type)}
-                                            </h4>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <h4 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+                                                    INSPECTION CHECK - {getProcessTypeLabel(activeHistory.process_type)}
+                                                </h4>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setFormError('');
+                                                        setShowEditModal(true);
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600"
+                                                >
+                                                    Edit Data
+                                                </button>
+                                            </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-xs">
                                                 <div><span className="text-gray-500">Part Name:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.part_name || '-'}</p></div>
                                                 <div><span className="text-gray-500">Part No:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.part_number || '-'}</p></div>
@@ -388,11 +631,23 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                 <p className="text-gray-700 dark:text-gray-200">{activeHistory.approved_by || '-'}</p>
                                             </div>
                                         </div>
+
+                                        {activeHistory.illustration_url && (
+                                            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                                                <p className="text-xs font-semibold text-gray-500 mb-2">Illustration (tersimpan)</p>
+                                                <img
+                                                    src={activeHistory.illustration_url}
+                                                    alt="PPM Illustration"
+                                                    className="max-h-48 w-auto rounded border border-gray-200"
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
 
                             <div className="hidden print:block p-2 text-[11px] leading-tight">
+                                <div className="print-only">
                                 <div className="print-sheet">
                                     <div className="print-border-thick px-3 py-2">
                                         <div className="grid grid-cols-12 items-center gap-2">
@@ -520,14 +775,15 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                         <td className="w-1/3 text-center">Approved</td>
                                                     </tr>
                                                     <tr>
-                                                        <td className="h-10 text-center">{activeHistory?.ppm_date || '-'}</td>
-                                                        <td className="h-10 text-center">{activeHistory?.checked_by || '-'}</td>
-                                                        <td className="h-10 text-center">{activeHistory?.approved_by || '-'}</td>
+                                                        <td className="h-16 text-center align-bottom pb-1">{activeHistory?.ppm_date || '-'}</td>
+                                                        <td className="h-16 text-center align-bottom pb-1">{activeHistory?.checked_by || '-'}</td>
+                                                        <td className="h-16 text-center align-bottom pb-1">{activeHistory?.approved_by || '-'}</td>
                                                     </tr>
                                                 </tbody>
                                             </table>
                                         </div>
                                     </div>
+                                </div>
                                 </div>
                             </div>
 
@@ -575,6 +831,10 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                     <span className="text-xs text-gray-500">Belum ada gambar dipilih</span>
                                                 )}
                                             </div>
+
+                                            {formError && (
+                                                <p className="text-xs text-red-600">{formError}</p>
+                                            )}
                                         </div>
                                         <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
                                             <button
@@ -587,10 +847,360 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                             <button
                                                 type="button"
                                                 onClick={handlePrintNow}
+                                                disabled={isSaving}
                                                 className="px-3 py-1.5 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700"
                                             >
-                                                Lanjut Print
+                                                {isSaving ? 'Menyimpan...' : 'Simpan & Print'}
                                             </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {showEditModal && activeHistory && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[65]">
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[95vh] overflow-y-auto">
+                                        <div className="p-6">
+                                            <div className="flex justify-between items-center mb-6">
+                                                <div>
+                                                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                                                        INSPECTION CHECK - {getProcessTypeLabel(editForm.process_type || activeHistory.process_type)}
+                                                    </h3>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                                        {activeHistory?.die?.part_number || '-'} - {activeHistory?.die?.part_name || '-'}
+                                                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                            Editing PPM-{activeHistory?.id || '-'}
+                                                        </span>
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowEditModal(false)}
+                                                    className="text-gray-500 hover:text-gray-700 text-2xl"
+                                                >
+                                                    x
+                                                </button>
+                                            </div>
+
+                                            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">PART NAME:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{activeHistory?.die?.part_name || '-'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">PM ID:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">PPM-{activeHistory?.id || '-'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">PART No.:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{activeHistory?.die?.part_number || '-'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">DIES No.:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{activeHistory?.die?.qty_die || '-'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">MODEL:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{activeHistory?.die?.model || '-'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">CUSTOMER:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{activeHistory?.die?.customer || '-'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">TOTAL STROKE:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{Number(activeHistory?.stroke_at_ppm || activeHistory?.die?.total_stroke || 0).toLocaleString()}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400">STANDARD:</span>
+                                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{Number(standardStrokeValue || 0).toLocaleString()} STROKE</span>
+                                                </div>
+                                            </div>
+
+                                            <form onSubmit={handleSubmitEdit} className="space-y-4">
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            PPM Date *
+                                                        </label>
+                                                        <input
+                                                            type="date"
+                                                            value={String(editForm.ppm_date || '').slice(0, 10)}
+                                                            onChange={(e) => handleEditInputChange('ppm_date', e.target.value)}
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                            required
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            PIC *
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={editForm.pic}
+                                                            onChange={(e) => handleEditInputChange('pic', e.target.value)}
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                            required
+                                                            maxLength={100}
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            Maintenance Type *
+                                                        </label>
+                                                        <select
+                                                            value={editForm.maintenance_type}
+                                                            onChange={(e) => handleEditInputChange('maintenance_type', e.target.value)}
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                            required
+                                                        >
+                                                            <option value="routine">Routine</option>
+                                                            <option value="repair">Repair</option>
+                                                            <option value="overhaul">Overhaul</option>
+                                                            <option value="emergency">Emergency</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            PROCESS *
+                                                        </label>
+                                                        <select
+                                                            value={editForm.process_type}
+                                                            onChange={(e) => handleEditInputChange('process_type', e.target.value)}
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:text-gray-300 text-sm font-semibold bg-gray-100 dark:bg-gray-800"
+                                                            disabled
+                                                        >
+                                                            <option value="">-- Select Process --</option>
+                                                            <option value="blank_pierce">Blank Pierce</option>
+                                                            <option value="draw">Draw</option>
+                                                            <option value="embos">Embos</option>
+                                                            <option value="trim">Trim</option>
+                                                            <option value="form">Form</option>
+                                                            <option value="flang">Flang</option>
+                                                            <option value="restrike">Restrike</option>
+                                                            <option value="pierce">Pierce</option>
+                                                            <option value="cam_pierce">Cam Pierce</option>
+                                                        </select>
+                                                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                                            Process type locked - editing: {getProcessTypeLabel(editForm.process_type)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {totalChecklistCount > 0 && (
+                                                    <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                                                        <div className="bg-indigo-600 text-white px-4 py-2 flex justify-between items-center">
+                                                            <h4 className="font-semibold text-sm">
+                                                                CHECK LIST ITEM - {getProcessTypeLabel(editForm.process_type)}
+                                                            </h4>
+                                                            <span
+                                                                className={`text-xs px-2 py-1 rounded font-medium ${
+                                                                    filledChecklistCount === totalChecklistCount
+                                                                        ? 'bg-green-500 text-white'
+                                                                        : 'bg-indigo-500 text-white'
+                                                                }`}
+                                                            >
+                                                                {filledChecklistCount} / {totalChecklistCount} filled
+                                                            </span>
+                                                        </div>
+
+                                                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                                            <thead className="bg-gray-100 dark:bg-gray-700">
+                                                                <tr>
+                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-12">No.</th>
+                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">CHECK LIST ITEM</th>
+                                                                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 w-24" colSpan="2">
+                                                                        Inspection Result
+                                                                    </th>
+                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-40">Remark</th>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th></th>
+                                                                    <th></th>
+                                                                    <th className="px-2 py-1 text-center text-xs text-gray-500 dark:text-gray-400 w-12">Normal</th>
+                                                                    <th className="px-2 py-1 text-center text-xs text-gray-500 dark:text-gray-400 w-12">Unusual</th>
+                                                                    <th></th>
+                                                                </tr>
+                                                            </thead>
+
+                                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                                {(editForm.checklist_results || []).map((item, index) => (
+                                                                    <tr key={`edit-checklist-${index}`} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'}>
+                                                                        <td className="px-3 py-2 text-sm font-medium text-gray-900 dark:text-gray-100 text-center align-top">
+                                                                            {item.item_no || index + 1}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 align-top">
+                                                                            <p className="text-sm text-gray-900 dark:text-gray-100">{item.description || '-'}</p>
+                                                                            <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                                                                                {getChecklistTranslation(editForm.process_type, item.item_no)}
+                                                                            </p>
+                                                                        </td>
+                                                                        <td className="px-2 py-2 text-center align-top">
+                                                                            <input
+                                                                                type="radio"
+                                                                                name={`edit_checklist_${index}`}
+                                                                                checked={item.result === 'normal'}
+                                                                                onChange={() => handleChecklistFieldChange(index, 'result', 'normal')}
+                                                                                className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="px-2 py-2 text-center align-top">
+                                                                            <input
+                                                                                type="radio"
+                                                                                name={`edit_checklist_${index}`}
+                                                                                checked={item.result === 'unusual'}
+                                                                                onChange={() => handleChecklistFieldChange(index, 'result', 'unusual')}
+                                                                                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="px-2 py-2 align-top">
+                                                                            <input
+                                                                                type="text"
+                                                                                value={item.remark || ''}
+                                                                                onChange={(e) => handleChecklistFieldChange(index, 'remark', e.target.value)}
+                                                                                placeholder="..."
+                                                                                className="w-full rounded border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 text-xs py-1 px-2"
+                                                                            />
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+
+                                                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                                                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Additional Notes</h4>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                                Work Performed
+                                                            </label>
+                                                            <textarea
+                                                                value={editForm.work_performed}
+                                                                onChange={(e) => handleEditInputChange('work_performed', e.target.value)}
+                                                                rows="2"
+                                                                placeholder="Describe the work performed..."
+                                                                className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                                Parts Replaced
+                                                            </label>
+                                                            <textarea
+                                                                value={editForm.parts_replaced}
+                                                                onChange={(e) => handleEditInputChange('parts_replaced', e.target.value)}
+                                                                rows="2"
+                                                                placeholder="List parts replaced..."
+                                                                className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                                                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">Note:</p>
+                                                    <p className="text-xs text-blue-600 dark:text-blue-400"># Cleaning Dies Lower & Upper</p>
+                                                    <p className="text-xs text-blue-600 dark:text-blue-400"># Check All Bolt Lower & Upper Dies</p>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                            Checked By
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={editForm.checked_by}
+                                                            onChange={(e) => handleEditInputChange('checked_by', e.target.value)}
+                                                            placeholder="e.g., Mr. Kammee"
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                            maxLength={100}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                            Approved By
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={editForm.approved_by}
+                                                            onChange={(e) => handleEditInputChange('approved_by', e.target.value)}
+                                                            placeholder="e.g., Mr. Manop"
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                            maxLength={100}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                            Findings
+                                                        </label>
+                                                        <textarea
+                                                            value={editForm.findings}
+                                                            onChange={(e) => handleEditInputChange('findings', e.target.value)}
+                                                            rows="2"
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                            Recommendations
+                                                        </label>
+                                                        <textarea
+                                                            value={editForm.recommendations}
+                                                            onChange={(e) => handleEditInputChange('recommendations', e.target.value)}
+                                                            rows="2"
+                                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                        Illustration Image
+                                                    </label>
+                                                    <input
+                                                        type="file"
+                                                        accept="image/png,image/jpeg,image/webp"
+                                                        onChange={handleEditImageChange}
+                                                        className="w-full text-sm"
+                                                    />
+                                                </div>
+
+                                                {formError && (
+                                                    <p className="text-xs text-red-600">{formError}</p>
+                                                )}
+
+                                                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                                                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                                        Note: Anda sedang mengedit riwayat PPM. Pastikan checklist terisi sesuai kondisi aktual.
+                                                    </p>
+                                                </div>
+
+                                                <div className="flex justify-end gap-3 pt-4">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowEditModal(false)}
+                                                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={isSaving || (totalChecklistCount > 0 && filledChecklistCount !== totalChecklistCount)}
+                                                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isSaving ? 'Saving...' : `Complete ${getProcessTypeLabel(editForm.process_type)}`}
+                                                    </button>
+                                                </div>
+                                            </form>
                                         </div>
                                     </div>
                                 </div>

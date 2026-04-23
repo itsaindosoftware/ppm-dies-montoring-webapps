@@ -102,6 +102,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('dies/batch/transfer-back', [DieController::class, 'batchTransferBack'])->name('dies.batch-transfer-back');
     });
 
+    Route::middleware(['role:admin,mtn_dies'])->group(function () {
+        Route::post('ppm-form/{history}/update', [DieController::class, 'updatePpmForm'])
+            ->name('ppm-form.update');
+    });
+
     // Dies Management - View for admin, mtn_dies, mgr_gm, md, ppic
     Route::get('ppm-form', [DieController::class, 'ppmForm'])->name('ppm-form.index');
     Route::get('dies', [DieController::class, 'index'])->name('dies.index');

@@ -16,6 +16,7 @@ class PpmHistory extends Model
         'ppm_number',
         'process_type',
         'checklist_results',
+        'illustration_path',
         'pic',
         'status',
         'maintenance_type',
@@ -33,6 +34,10 @@ class PpmHistory extends Model
         'checklist_results' => 'array',
     ];
 
+    protected $appends = [
+        'illustration_url',
+    ];
+
     public function die()
     {
         return $this->belongsTo(DieModel::class);
@@ -41,5 +46,12 @@ class PpmHistory extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function getIllustrationUrlAttribute(): ?string
+    {
+        return $this->illustration_path
+            ? asset('storage/' . $this->illustration_path)
+            : null;
     }
 }
