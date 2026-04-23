@@ -13,6 +13,8 @@ use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Carbon;
 
 // s
 
@@ -235,6 +237,7 @@ class DieController extends Controller
                 'maintenance_type' => $history->maintenance_type,
                 'process_type' => $history->process_type,
                 'checklist_results' => $history->checklist_results,
+                'illustration_url' => $history->illustration_url,
                 'work_performed' => $history->work_performed,
                 'parts_replaced' => $history->parts_replaced,
                 'findings' => $history->findings,
@@ -636,6 +639,12 @@ class DieController extends Controller
      */
     public function startPpmProcessing(Request $request, DieModel $die)
     {
+        // ketika ppic belum konfirmasi jadwal, maka tidak bisa mulai ppm processing
+        if (!$die->schedule_approved_at) {
+            return redirect()->back()
+                ->with('error', 'Cannot start PPM Processing. PPM schedule must be confirmed by PPIC first.');
+        }
+        // ketika jadwal sudah dikonfirmasi tapi bagian production belum ditransfer ke MTN Dies, maka tidak bisa mulai ppm processing
         if ($die->ppm_alert_status !== 'transferred_to_mtn' || !$die->transferred_at) {
             return redirect()->back()
                 ->with('error', 'Cannot start PPM Processing. Die must be transferred by Production to MTN Dies first.');
@@ -1234,6 +1243,45 @@ class DieController extends Controller
             ->values();
     }
 
+    public function updatePpmForm(Request $request, PpmHistory $history)
+    {
+        $validated = $request->validate([
+            'ppm_date' => 'required|date',
+            'pic' => 'required|string|max:100',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
+            'checklist_results' => 'nullable|array',
+            'checklist_results.*.item_no' => 'required|integer',
+            'checklist_results.*.description' => 'required|string',
+            'checklist_results.*.result' => 'required|in:normal,unusual',
+            'checklist_results.*.remark' => 'nullable|string',
+            'work_performed' => 'nullable|string',
+            'parts_replaced' => 'nullable|string',
+            'findings' => 'nullable|string',
+            'recommendations' => 'nullable|string',
+            'checked_by' => 'nullable|string|max:100',
+            'approved_by' => 'nullable|string|max:100',
+            'illustration_image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+        ]);
+
+        // Accept ISO datetime input from frontend and persist as date column format.
+        $validated['ppm_date'] = Carbon::parse($validated['ppm_date'])->toDateString();
+
+        if ($request->hasFile('illustration_image')) {
+            if ($history->illustration_path && Storage::disk('public')->exists($history->illustration_path)) {
+                Storage::disk('public')->delete($history->illustration_path);
+            }
+
+            $validated['illustration_path'] = $request->file('illustration_image')
+                ->store('ppm-illustrations', 'public');
+        }
+
+        unset($validated['illustration_image']);
+
+        $history->update($validated);
+
+        return redirect()->back()->with('success', 'PPM history updated successfully.');
+    }
 
 
     private function getAvailableGroupNames()
