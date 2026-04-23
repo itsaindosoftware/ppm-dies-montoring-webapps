@@ -33,7 +33,10 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     });
     const searchTimeout = useRef(null);
 
-    const histories = ppmHistories?.data || [];
+    const histories = (ppmHistories?.data || []).filter((history) => {
+        const processType = String(history?.process_type || '').trim();
+        return processType.length > 0;
+    });
     const sortedHistories = [...histories].sort((a, b) => {
         const aTime = a?.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b?.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
@@ -45,7 +48,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         return aTime - bTime;
     });
 
-    const latestHistoryByPartAndProcess = [...sortedHistories]
+    const latestHistoryByProcess = [...sortedHistories]
         .sort((a, b) => {
             const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
             const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
@@ -55,22 +58,22 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
             return bTime - aTime;
         })
         .reduce((acc, history) => {
-            const key = `${history?.die?.part_number || '-'}__${history?.process_type || '-'}`;
-            if (!acc.some((item) => `${item?.die?.part_number || '-'}__${item?.process_type || '-'}` === key)) {
+            const key = history?.process_type || '-';
+            if (!acc.some((item) => (item?.process_type || '-') === key)) {
                 acc.push(history);
             }
             return acc;
         }, []);
 
-    const [activeHistoryId, setActiveHistoryId] = useState(latestHistoryByPartAndProcess[0]?.id || null);
+    const [activeHistoryId, setActiveHistoryId] = useState(latestHistoryByProcess[0]?.id || null);
 
-    const processTabs = latestHistoryByPartAndProcess.reduce((acc, history) => {
-        const key = `${history?.die?.part_number || '-'}__${history?.process_type || 'unknown'}`;
+    const processTabs = latestHistoryByProcess.reduce((acc, history) => {
+        const key = history?.process_type || 'unknown';
         if (!acc.find((tab) => tab.key === key)) {
             acc.push({
                 key,
                 process_type: history.process_type,
-                label: `${history?.die?.part_number || '-'} - ${getProcessTypeLabel(history.process_type)}`,
+                label: getProcessTypeLabel(history.process_type),
                 historyId: history.id,
             });
         }
@@ -78,7 +81,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     }, []);
 
     useEffect(() => {
-        setActiveHistoryId(latestHistoryByPartAndProcess[0]?.id || null);
+        setActiveHistoryId(latestHistoryByProcess[0]?.id || null);
     }, [ppmHistories?.data]);
 
     const applyFilters = (overrides = {}) => {
@@ -124,7 +127,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         router.get(route('ppm-form.index'));
     };
 
-    const activeHistory = latestHistoryByPartAndProcess.find((item) => item.id === activeHistoryId) || latestHistoryByPartAndProcess[0] || null;
+    const activeHistory = latestHistoryByProcess.find((item) => item.id === activeHistoryId) || latestHistoryByProcess[0] || null;
     const activeChecklist = activeHistory?.checklist_results || [];
 
     useEffect(() => {
@@ -181,11 +184,13 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     };
 
     const handlePrintPdf = () => {
+        if (!activeHistory?.id) {
+            return;
+        }
+
         setFormError('');
         setShowPrintImageModal(false);
-        setTimeout(() => {
-            window.print();
-        }, 80);
+        window.open(route('ppm-form.pdf', activeHistory.id), '_blank', 'noopener,noreferrer');
     };
 
     const handlePrintImageChange = (event) => {
@@ -308,9 +313,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                     onSuccess: () => {
                         setShowPrintImageModal(false);
                         setPrintImageFile(null);
-                        setTimeout(() => {
-                            window.print();
-                        }, 80);
+                        window.open(route('ppm-form.pdf', activeHistory.id), '_blank', 'noopener,noreferrer');
                     },
                     onError: () => {
                         setFormError('Upload gambar gagal disimpan ke database.');
@@ -325,9 +328,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         }
 
         setShowPrintImageModal(false);
-        setTimeout(() => {
-            window.print();
-        }, 80);
+        window.open(route('ppm-form.pdf', activeHistory.id), '_blank', 'noopener,noreferrer');
     };
 
     const filledChecklistCount = (editForm.checklist_results || []).filter((item) => item?.result).length;
@@ -441,7 +442,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                     <button
                                         type="button"
                                         onClick={handlePrintPdf}
-                                        className="inline-flex items-center px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
+                                        className="inline-flex items-center px-3 py-1.5 mr-4 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
                                     >
                                         Print PDF
                                     </button>
@@ -754,7 +755,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                         className="max-h-full max-w-full object-contain"
                                                     />
                                                 ) : (
-                                                    <span className="text-[10px] text-gray-500">No illustration image selected</span>
+                                                    <span className="text-[10px] text-gray-500">No image selected</span>
                                                 )}
                                             </div>
                                         </div>
@@ -1164,7 +1165,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
 
                                                 <div>
                                                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                                                        Illustration Image
+                                                         Image
                                                     </label>
                                                     <input
                                                         type="file"
@@ -1197,7 +1198,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                         disabled={isSaving || (totalChecklistCount > 0 && filledChecklistCount !== totalChecklistCount)}
                                                         className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                                     >
-                                                        {isSaving ? 'Saving...' : `Complete ${getProcessTypeLabel(editForm.process_type)}`}
+                                                        {isSaving ? 'Saving...' : `Save ${getProcessTypeLabel(editForm.process_type)}`}
                                                     </button>
                                                 </div>
                                             </form>

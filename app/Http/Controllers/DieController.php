@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\DieChangeLog;
 use App\Models\DieModel;
 use App\Models\DieProcess;
@@ -199,6 +200,7 @@ class DieController extends Controller
                 'die.machineModel:id,code',
             ])
             ->where('status', 'done')
+            ->whereIn('process_type', DieModel::PROCESS_TYPES)
             ->when(!empty($filters['ppm_date']), function ($query) use ($filters) {
                 $query->whereDate('ppm_date', $filters['ppm_date']);
             })
@@ -266,6 +268,63 @@ class DieController extends Controller
             'ppmHistories' => $ppmHistories,
             'filters' => $filters,
         ]);
+    }
+
+    public function downloadPpmFormPdf(PpmHistory $history)
+    {
+        $history->loadMissing([
+            'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke,ppm_standard,control_stroke',
+            'die.customer:id,code,name',
+            'die.machineModel:id,code',
+            'die.machineModel.tonnageStandard:id,standard_stroke',
+        ]);
+
+        $checklistResults = collect($history->checklist_results ?? [])
+            ->take(12)
+            ->map(function ($item, $index) {
+                return [
+                    'item_no' => data_get($item, 'item_no', $index + 1),
+                    'description' => data_get($item, 'description', '-'),
+                    'result' => strtolower(trim((string) data_get($item, 'result', ''))),
+                    'remark' => data_get($item, 'remark', ''),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $checklistResults = array_pad($checklistResults, 12, null);
+
+        $processLabels = [
+            'blank_pierce' => 'BLANK + PIERCE',
+            'draw' => 'DRAW',
+            'embos' => 'EMBOS',
+            'trim' => 'TRIM',
+            'form' => 'FORM',
+            'flang' => 'FLANG',
+            'restrike' => 'RESTRIKE',
+            'pierce' => 'PIERCE',
+            'cam_pierce' => 'CAM-PIERCE',
+        ];
+
+        $logoPath = public_path('storage/logo-itsa2.png');
+        $illustrationPath = $history->illustration_path
+            ? storage_path('app/public/' . $history->illustration_path)
+            : null;
+
+        $pdf = Pdf::loadView('ppm.form-pdf', [
+            'history' => $history,
+            'die' => $history->die,
+            'processLabel' => $processLabels[$history->process_type] ?? strtoupper((string) $history->process_type),
+            'checklistRows' => $checklistResults,
+            'standardStrokeValue' => $history->die?->ppm_standard ?? $history->die?->standard_stroke ?? '-',
+            'noteValue' => $history->work_performed ?: ($history->findings ?: '-'),
+            'logoPath' => file_exists($logoPath) ? $logoPath : null,
+            'illustrationPath' => $illustrationPath && file_exists($illustrationPath) ? $illustrationPath : null,
+        ]);
+
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf->download('PPM_Form_' . ($history->ppm_number ?: $history->id) . '.pdf');
     }
 
     /**

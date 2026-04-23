@@ -109,6 +109,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Dies Management - View for admin, mtn_dies, mgr_gm, md, ppic
     Route::get('ppm-form', [DieController::class, 'ppmForm'])->name('ppm-form.index');
+    Route::get('ppm-form/{history}/pdf', [DieController::class, 'downloadPpmFormPdf'])->name('ppm-form.pdf');
     Route::get('dies', [DieController::class, 'index'])->name('dies.index');
     Route::get('dies/{die}', [DieController::class, 'show'])->name('dies.show');
 

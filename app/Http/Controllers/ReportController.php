@@ -106,7 +106,7 @@ class ReportController extends Controller
         ]);
 
         $dateFrom = $request->date_from ? Carbon::parse($request->date_from) : now()->subMonths(3);
-        $dateTo = $request->date_to ? Carbon:: parse($request->date_to) : now();
+        $dateTo = $request->date_to ? Carbon::parse($request->date_to) : now();
 
         return Excel::download(
             new PpmHistoryReportExport($dateFrom, $dateTo),
@@ -167,6 +167,6 @@ class ReportController extends Controller
 
         $pdf->setPaper('a4', 'landscape');
 
-        return $pdf->download('Critical_Dies_Report_' .  date('Y-m-d_His') . '.pdf');
+        return $pdf->download('Critical_Dies_Report_' . date('Y-m-d_His') . '.pdf');
     }
 }
