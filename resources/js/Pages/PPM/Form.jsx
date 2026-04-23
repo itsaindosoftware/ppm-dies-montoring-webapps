@@ -694,7 +694,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                     <span>STANDARD STROKE</span><span>:</span><span>{standardStrokeValue}</span>
                                                 </div>
                                                 <div className="grid grid-cols-[85px_10px_1fr]">
-                                                    <span>TOLERANSI</span><span>:</span><span>1 Lot</span>
+                                                    <span>TOLERANCE</span><span>:</span><span>1 Lot</span>
                                                 </div>
                                             </div>
                                         </div>

@@ -43,6 +43,7 @@ export default function DieShow({ auth, die }) {
     // Determine if Record PPM button should be enabled
     // Die must be transferred to MTN Dies location first
     const canRecordPpm = canEditDies && ['transferred_to_mtn', 'ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
+    const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
 
     // Update checklist when process_type changes
     useEffect(() => {
@@ -352,7 +353,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* MTN Dies: Start PPM Processing */}
-                        {isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && (
+                        {canStartPpmProcessing && (
                             <button
                                 onClick={() => setShowStartPpmModal(true)}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
