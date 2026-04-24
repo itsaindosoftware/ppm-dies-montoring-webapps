@@ -1342,6 +1342,17 @@ class DieController extends Controller
         return redirect()->back()->with('success', 'PPM history updated successfully.');
     }
 
+    public function destroyPpmFormHistory(PpmHistory $history)
+    {
+        if ($history->illustration_path && Storage::disk('public')->exists($history->illustration_path)) {
+            Storage::disk('public')->delete($history->illustration_path);
+        }
+
+        $history->delete();
+
+        return redirect()->back()->with('success', 'PPM history berhasil dihapus.');
+    }
+
 
     private function getAvailableGroupNames()
     {

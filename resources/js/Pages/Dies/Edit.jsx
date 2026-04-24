@@ -238,7 +238,7 @@ export default function DieEdit({ auth, die, customers, machineModels, groupName
                                             </datalist>
                                             {errors.group_name && <p className="text-red-500 text-xs mt-1">{errors.group_name}</p>}
                                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                                💡 Isi Group Name yang sama untuk dies yang ingin berbagi Accumulation Stroke.
+                                                💡 Fill in the same Group Name for dies that want to share Accumulation Stroke.
                                             </p>
                                         </div>
                                     </div>
@@ -272,7 +272,7 @@ export default function DieEdit({ auth, die, customers, machineModels, groupName
                                         className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Jika Data Kotak Die Group diisi, nilai ini akan diset ke semua part dalam group yang sama.
+                                        If the Die Group Box Data is filled in, this value will be set to all parts in the same group.
                                     </p>
                                 </div>
                             </div>

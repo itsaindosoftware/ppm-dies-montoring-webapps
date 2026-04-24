@@ -2,7 +2,8 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import { getChecklistItems, getProcessTypeLabel } from '@/Utils/PpmChecklistData';
-// tinggal yang print pdf
+import { confirmDialog } from '@/Utils/swal';
+// tinggal yang print pdfs
 
 
 export default function PpmFormIndex({ auth, ppmHistories, filters }) {
@@ -16,6 +17,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const [printImageFile, setPrintImageFile] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [formError, setFormError] = useState('');
     const [editForm, setEditForm] = useState({
         ppm_date: '',
@@ -33,55 +35,74 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     });
     const searchTimeout = useRef(null);
 
+    const getHistoryTime = (history) => {
+        const timestamp = history?.created_at ? new Date(history.created_at).getTime() : 0;
+        return Number.isNaN(timestamp) ? 0 : timestamp;
+    };
+
     const histories = (ppmHistories?.data || []).filter((history) => {
         const processType = String(history?.process_type || '').trim();
         return processType.length > 0;
     });
     const sortedHistories = [...histories].sort((a, b) => {
-        const aTime = a?.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b?.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+        const aTime = getHistoryTime(a);
+        const bTime = getHistoryTime(b);
 
         if (aTime === bTime) {
-            return (a?.id || 0) - (b?.id || 0);
+            return (b?.id || 0) - (a?.id || 0);
         }
 
-        return aTime - bTime;
+        return bTime - aTime;
     });
 
-    const latestHistoryByProcess = [...sortedHistories]
-        .sort((a, b) => {
-            const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
-            const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
-            if (aTime === bTime) {
-                return (b?.id || 0) - (a?.id || 0);
-            }
-            return bTime - aTime;
-        })
-        .reduce((acc, history) => {
-            const key = history?.process_type || '-';
-            if (!acc.some((item) => (item?.process_type || '-') === key)) {
-                acc.push(history);
-            }
-            return acc;
-        }, []);
-
-    const [activeHistoryId, setActiveHistoryId] = useState(latestHistoryByProcess[0]?.id || null);
-
-    const processTabs = latestHistoryByProcess.reduce((acc, history) => {
-        const key = history?.process_type || 'unknown';
-        if (!acc.find((tab) => tab.key === key)) {
-            acc.push({
-                key,
-                process_type: history.process_type,
-                label: getProcessTypeLabel(history.process_type),
-                historyId: history.id,
-            });
+    const groupedByDie = sortedHistories.reduce((acc, history) => {
+        const dieId = String(history?.die?.id || history?.die_id || `history-${history?.id || 'unknown'}`);
+        if (!acc[dieId]) {
+            acc[dieId] = [];
         }
+        acc[dieId].push(history);
         return acc;
-    }, []);
+    }, {});
+
+    const dieGroups = Object.entries(groupedByDie)
+        .map(([dieId, groupedHistories]) => {
+            const sortedGroupHistories = [...groupedHistories].sort((a, b) => {
+                const aTime = getHistoryTime(a);
+                const bTime = getHistoryTime(b);
+
+                if (aTime === bTime) {
+                    return (b?.id || 0) - (a?.id || 0);
+                }
+
+                return bTime - aTime;
+            });
+
+            return {
+                dieId,
+                histories: sortedGroupHistories,
+                latestHistory: sortedGroupHistories[0] || null,
+            };
+        })
+        .sort((a, b) => {
+            const aTime = getHistoryTime(a.latestHistory);
+            const bTime = getHistoryTime(b.latestHistory);
+
+            if (aTime === bTime) {
+                return (b.latestHistory?.id || 0) - (a.latestHistory?.id || 0);
+            }
+
+            return bTime - aTime;
+        });
+
+    const [activeDieId, setActiveDieId] = useState(dieGroups[0]?.dieId || null);
+    const [activeProcessType, setActiveProcessType] = useState('');
 
     useEffect(() => {
-        setActiveHistoryId(latestHistoryByProcess[0]?.id || null);
+        const firstGroup = dieGroups[0] || null;
+        const firstHistory = firstGroup?.histories?.[0] || null;
+
+        setActiveDieId(firstGroup?.dieId || null);
+        setActiveProcessType(firstHistory?.process_type || '');
     }, [ppmHistories?.data]);
 
     const applyFilters = (overrides = {}) => {
@@ -127,8 +148,37 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         router.get(route('ppm-form.index'));
     };
 
-    const activeHistory = latestHistoryByProcess.find((item) => item.id === activeHistoryId) || latestHistoryByProcess[0] || null;
+    const activeDieGroup = dieGroups.find((group) => group.dieId === activeDieId) || dieGroups[0] || null;
+    const processTabs = (activeDieGroup?.histories || []).reduce((acc, history) => {
+        const processType = history?.process_type || '';
+        if (!processType || acc.some((tab) => tab.process_type === processType)) {
+            return acc;
+        }
+
+        acc.push({
+            key: `${activeDieGroup?.dieId}-${processType}`,
+            process_type: processType,
+            label: getProcessTypeLabel(processType),
+        });
+
+        return acc;
+    }, []);
+
+    const activeHistory =
+        (activeDieGroup?.histories || []).find((item) => item.process_type === activeProcessType) ||
+        activeDieGroup?.histories?.[0] ||
+        null;
     const activeChecklist = activeHistory?.checklist_results || [];
+    const activeDieIndex = dieGroups.findIndex((group) => group.dieId === activeDieGroup?.dieId);
+    const activeDiePage = activeDieIndex >= 0 ? activeDieIndex + 1 : 0;
+    const hasMultipleDies = dieGroups.length > 1;
+
+    useEffect(() => {
+        const processExists = processTabs.some((tab) => tab.process_type === activeProcessType);
+        if (!processExists) {
+            setActiveProcessType(processTabs[0]?.process_type || '');
+        }
+    }, [activeDieId, ppmHistories?.data]);
 
     useEffect(() => {
         if (!activeHistory) {
@@ -153,7 +203,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         if (!printImageFile) {
             setPrintIllustrationSrc(activeHistory.illustration_url || '');
         }
-    }, [activeHistoryId, ppmHistories?.data]);
+    }, [activeHistory?.id, ppmHistories?.data]);
 
     const normalizeResult = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
@@ -185,6 +235,12 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const printRowsCount = 12;
     const checklistRows = Array.from({ length: printRowsCount }, (_, index) => activeChecklist[index] || null);
     const standardStrokeValue = activeHistory?.die?.ppm_standard ?? activeHistory?.die?.standard_stroke ?? '-';
+    const paginationLinks = ppmHistories?.links || [];
+    const currentPage = ppmHistories?.current_page || 1;
+    const lastPage = ppmHistories?.last_page || 1;
+    const fromResult = ppmHistories?.from || 0;
+    const toResult = ppmHistories?.to || 0;
+    const totalResults = ppmHistories?.total || histories.length;
 
     const getChecklistTranslation = (processType, itemNo) => {
         if (!processType || !itemNo) {
@@ -226,6 +282,78 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
             setPrintIllustrationSrc(String(reader.result || ''));
         };
         reader.readAsDataURL(file);
+    };
+
+    const getPaginationLabel = (label) => {
+        const normalizedLabel = String(label || '')
+            .replace(/&laquo;/g, '«')
+            .replace(/&raquo;/g, '»')
+            .replace(/<[^>]*>/g, '')
+            .trim();
+
+        if (!normalizedLabel) {
+            return '';
+        }
+
+        if (normalizedLabel.includes('Previous')) {
+            return 'Prev';
+        }
+
+        if (normalizedLabel.includes('Next')) {
+            return 'Next';
+        }
+
+        return normalizedLabel;
+    };
+
+    const goToPaginationLink = (url) => {
+        if (!url) {
+            return;
+        }
+
+        router.visit(url, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const handleDiePageChange = (dieId) => {
+        setActiveDieId(dieId);
+    };
+
+    const handleDeleteProcessType = async () => {
+        if (!activeHistory?.id || isDeleting) {
+            return;
+        }
+
+        const processLabel = getProcessTypeLabel(activeHistory.process_type);
+        const partNumberLabel = activeHistory?.die?.part_number || '-';
+        const confirmed = await confirmDialog({
+            title: 'Hapus Process?',
+            text: `Hapus process ${processLabel} untuk part number ${partNumberLabel}? Data yang dihapus hanya 1 record PPM ini.`,
+            icon: 'warning',
+            confirmButtonText: 'Ya, Hapus',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#6b7280',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
+        setFormError('');
+        setIsDeleting(true);
+
+        router.delete(route('ppm-form.destroy', activeHistory.id), {
+            preserveScroll: true,
+            onError: () => {
+                setFormError('Gagal menghapus data process type. Coba lagi.');
+            },
+            onFinish: () => {
+                setIsDeleting(false);
+            },
+        });
     };
 
     const buildUpdatePayload = (history, overrides = {}) => {
@@ -534,12 +662,12 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 )}
                                 <div className="flex flex-wrap gap-2">
                                     {processTabs.map((tab) => {
-                                        const isActive = activeHistory?.id === tab.historyId;
+                                        const isActive = activeHistory?.process_type === tab.process_type;
                                         return (
                                             <button
                                                 key={tab.key}
                                                 type="button"
-                                                onClick={() => setActiveHistoryId(tab.historyId)}
+                                                onClick={() => setActiveProcessType(tab.process_type)}
                                                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                                                     isActive
                                                         ? 'bg-blue-600 text-white border-blue-600'
@@ -567,16 +695,26 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                 <h4 className="text-base font-semibold text-gray-800 dark:text-gray-100">
                                                     INSPECTION CHECK - {getProcessTypeLabel(activeHistory.process_type)}
                                                 </h4>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setFormError('');
-                                                        setShowEditModal(true);
-                                                    }}
-                                                    className="px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600"
-                                                >
-                                                    Edit Data
-                                                </button>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleDeleteProcessType}
+                                                        disabled={isDeleting}
+                                                        className="px-3 py-1.5 rounded-md text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isDeleting ? 'Deleting...' : 'Delete Process'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormError('');
+                                                            setShowEditModal(true);
+                                                        }}
+                                                        className="px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600"
+                                                    >
+                                                        Edit Data
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-xs">
                                                 <div><span className="text-gray-500">Part Name:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.part_name || '-'}</p></div>
@@ -807,22 +945,85 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                 </div>
                             </div>
 
-                            {ppmHistories?.links?.length > 3 && (
-                                <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-2 print:hidden">
-                                    {ppmHistories.links.map((link, index) => (
-                                        <button
-                                            key={index}
-                                            type="button"
-                                            disabled={!link.url}
-                                            onClick={() => link.url && router.visit(link.url, { preserveState: true, preserveScroll: true })}
-                                            dangerouslySetInnerHTML={{ __html: link.label }}
-                                            className={`px-2.5 py-1 text-xs rounded border ${
-                                                link.active
-                                                    ? 'bg-blue-600 text-white border-blue-600'
-                                                    : 'bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600'
-                                            } ${!link.url ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                                        />
-                                    ))}
+                            {totalResults > 0 && (
+                                <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 print:hidden space-y-3">
+                                    {hasMultipleDies && (
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                Record {activeDiePage} dari {dieGroups.length} hasil pencarian (berdasarkan Die)
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDiePageChange(dieGroups[Math.max(activeDieIndex - 1, 0)]?.dieId)}
+                                                    disabled={activeDieIndex <= 0}
+                                                    className="px-2.5 py-1 text-xs rounded border bg-white text-gray-700 border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700"
+                                                >
+                                                    Prev
+                                                </button>
+
+                                                {dieGroups.map((group, index) => (
+                                                    <button
+                                                        key={`die-page-${group.dieId}`}
+                                                        type="button"
+                                                        onClick={() => handleDiePageChange(group.dieId)}
+                                                        className={`min-w-[32px] px-2.5 py-1 text-xs rounded border ${
+                                                            activeDieGroup?.dieId === group.dieId
+                                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700'
+                                                        }`}
+                                                    >
+                                                        {index + 1}
+                                                    </button>
+                                                ))}
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDiePageChange(dieGroups[Math.min(activeDieIndex + 1, dieGroups.length - 1)]?.dieId)}
+                                                    disabled={activeDieIndex >= dieGroups.length - 1}
+                                                    className="px-2.5 py-1 text-xs rounded border bg-white text-gray-700 border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700"
+                                                >
+                                                    Next
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-col gap-2 text-xs text-gray-500 dark:text-gray-400 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            Show {fromResult} - {toResult} of {totalResults} PPM history
+                                        </div>
+                                        <div>
+                                            Page {currentPage} of {lastPage}
+                                        </div>
+                                    </div>
+
+                                    {lastPage > 1 && (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {paginationLinks.map((link, index) => {
+                                                const label = getPaginationLabel(link.label);
+                                                const isEdgeControl = label === 'Prev' || label === 'Next';
+
+                                                return (
+                                                    <button
+                                                        key={`${label}-${index}`}
+                                                        type="button"
+                                                        disabled={!link.url || !label}
+                                                        onClick={() => goToPaginationLink(link.url)}
+                                                        className={`min-w-[40px] px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                                                            link.active
+                                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700'
+                                                        } ${!link.url ? 'opacity-50 cursor-not-allowed hover:bg-transparent dark:hover:bg-gray-800' : ''} ${
+                                                            isEdgeControl ? 'font-semibold' : 'font-medium'
+                                                        }`}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
