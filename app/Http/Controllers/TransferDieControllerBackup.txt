@@ -9,6 +9,13 @@ use Inertia\Inertia;
 
 class TransferDiesController extends Controller
 {
+    private const TO_MTN_ELIGIBLE_STATUSES = [
+        'red_alerted',
+        'lot_date_set',
+        'ppm_scheduled',
+        'schedule_approved',
+    ];
+
     protected DieMonitoringService $monitoringService;
 
     public function __construct(DieMonitoringService $monitoringService)
@@ -25,10 +32,12 @@ class TransferDiesController extends Controller
         $user = $request->user();
         $tab = $request->input('tab', 'to_mtn');
 
-        // Dies ready to transfer TO MTN (red_alerted status - Production role)
+        // Dies ready to transfer TO MTN.
+        // Keep this aligned with DieMonitoringService::transferDiesToMtn eligible statuses
+        // so entries do not disappear between schedule/approval steps.
         $toMtn = DieModel::with(['machineModel.tonnageStandard', 'customer'])
             ->active()
-            ->where('ppm_alert_status', 'red_alerted')
+            ->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
             ->get()
             ->map(fn($die) => $this->formatDie($die));
 
@@ -117,7 +126,7 @@ class TransferDiesController extends Controller
         ]);
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->where('ppm_alert_status', 'red_alerted')
+            ->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
             ->get();
 
         if ($dies->isEmpty()) {

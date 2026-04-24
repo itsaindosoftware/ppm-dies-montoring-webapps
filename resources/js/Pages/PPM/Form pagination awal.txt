@@ -3,7 +3,7 @@ import { Head, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import { getChecklistItems, getProcessTypeLabel } from '@/Utils/PpmChecklistData';
 import { confirmDialog } from '@/Utils/swal';
-// tinggal yang print pdf
+// tinggal yang print pdfs
 
 
 export default function PpmFormIndex({ auth, ppmHistories, filters }) {
