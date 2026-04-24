@@ -21,6 +21,10 @@ export default function DieShow({ auth, die }) {
     const isPpic = ['admin', 'ppic'].includes(auth.user.role);
     const isProd = ['admin', 'production'].includes(auth.user.role);
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
+    const isStartPpmBlocked =
+    !die.schedule_approved_at ||
+    die.ppm_alert_status !== 'transferred_to_mtn' ||
+    !die.transferred_at;
 
     // Check if multi-process PPM is active (has processes that are not all completed)
     const hasActiveProcesses = die.die_processes && die.die_processes.length > 0 &&
@@ -43,7 +47,8 @@ export default function DieShow({ auth, die }) {
     // Determine if Record PPM button should be enabled
     // Die must be transferred to MTN Dies location first
     const canRecordPpm = canEditDies && ['transferred_to_mtn', 'ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
-    const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
+    // const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
+    const canStartPpmProcessing = isMtnDies && !isStartPpmBlocked;
 
     // Update checklist when process_type changes
     useEffect(() => {

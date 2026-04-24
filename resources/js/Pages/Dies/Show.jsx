@@ -24,7 +24,7 @@ export default function DieShow({ auth, die }) {
     const isStartPpmBlocked =
     !die.schedule_approved_at ||
     die.ppm_alert_status !== 'transferred_to_mtn' ||
-    !die.transferred_at;
+    !die.transferred_at || die.ppm_status !== 'red';
 
     // Check if multi-process PPM is active (has processes that are not all completed)
     const hasActiveProcesses = die.die_processes && die.die_processes.length > 0 &&

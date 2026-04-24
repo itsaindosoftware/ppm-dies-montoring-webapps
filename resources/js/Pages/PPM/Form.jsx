@@ -163,6 +163,25 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         return { isNormal, isUnusual };
     };
 
+    const formatDisplayDate = (value) => {
+        if (!value) {
+            return '-';
+        }
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+
+        return new Intl.DateTimeFormat('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'UTC',
+        }).format(date).replace(/ /g, '-');
+    };
+
     const printRowsCount = 12;
     const checklistRows = Array.from({ length: printRowsCount }, (_, index) => activeChecklist[index] || null);
     const standardStrokeValue = activeHistory?.die?.ppm_standard ?? activeHistory?.die?.standard_stroke ?? '-';
@@ -564,7 +583,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                 <div><span className="text-gray-500">Part No:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.part_number || '-'}</p></div>
                                                 <div><span className="text-gray-500">Model:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.model || '-'}</p></div>
                                                 <div><span className="text-gray-500">Customer:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.customer || '-'}</p></div>
-                                                <div><span className="text-gray-500">PPM Date:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.ppm_date || '-'}</p></div>
+                                                <div><span className="text-gray-500">PPM Date:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{formatDisplayDate(activeHistory.ppm_date)}</p></div>
                                                 <div><span className="text-gray-500">PIC:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.pic || '-'}</p></div>
                                                 <div><span className="text-gray-500">Maintenance:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.maintenance_type || '-'}</p></div>
                                                 <div><span className="text-gray-500">Status:</span><p className="font-semibold text-green-600">{activeHistory.status || '-'}</p></div>
@@ -776,7 +795,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                         <td className="w-1/3 text-center">Approved</td>
                                                     </tr>
                                                     <tr>
-                                                        <td className="h-16 text-center align-bottom pb-1">{activeHistory?.ppm_date || '-'}</td>
+                                                        <td className="h-16 text-center align-bottom pb-1">{formatDisplayDate(activeHistory?.ppm_date)}</td>
                                                         <td className="h-16 text-center align-bottom pb-1">{activeHistory?.checked_by || '-'}</td>
                                                         <td className="h-16 text-center align-bottom pb-1">{activeHistory?.approved_by || '-'}</td>
                                                     </tr>
