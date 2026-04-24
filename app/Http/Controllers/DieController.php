@@ -1348,9 +1348,16 @@ class DieController extends Controller
             Storage::disk('public')->delete($history->illustration_path);
         }
 
+        // Hapus satu data die_processes yang berelasi ke ppm_history ini
+        \App\Models\DieProcess::where('die_id', $history->die_id)
+            ->where('process_type', $history->process_type)
+            ->where('ppm_history_id', $history->id)
+            ->limit(1)
+            ->delete();
+
         $history->delete();
 
-        return redirect()->back()->with('success', 'PPM history berhasil dihapus.');
+        return redirect()->back()->with('success', 'PPM history & relasi die_process berhasil dihapus.');
     }
 
 

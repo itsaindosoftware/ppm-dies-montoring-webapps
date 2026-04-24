@@ -9,11 +9,22 @@ use Inertia\Inertia;
 
 class TransferDiesController extends Controller
 {
+    private const TO_MTN_EXCLUDED_ALERT_STATUSES = [
+        'transferred_to_mtn',
+        'ppm_in_progress',
+        'additional_repair',
+        'ppm_completed',
+    ];
+
     private const TO_MTN_ELIGIBLE_STATUSES = [
+        // Previous rule (kept for reference):
+        // 'red_alerted',
+        // 'lot_date_set',
+        // 'ppm_scheduled',
+        // 'schedule_approved',
+
+        // Current active rule: only red dies from ppm_alert_status
         'red_alerted',
-        'lot_date_set',
-        'ppm_scheduled',
-        'schedule_approved',
     ];
 
     protected DieMonitoringService $monitoringService;
@@ -32,19 +43,23 @@ class TransferDiesController extends Controller
         $user = $request->user();
         $tab = $request->input('tab', 'to_mtn');
 
-        // Dies ready to transfer TO MTN based on allowed workflow statuses.
-        $toMtn = DieModel::with(['machineModel.tonnageStandard', 'customer'])
+        // Dies ready to transfer TO MTN.
+        // Use the same red logic as /dies?status=red (computed ppm_status from accumulation stroke).
+        $toMtnDies = DieModel::with(['machineModel.tonnageStandard', 'customer'])
             ->active()
-            ->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
             ->get()
             ->filter(function ($die) {
-                return $die instanceof DieModel && $die->ppm_status === 'red';
+                if (!$die instanceof DieModel) {
+                    return false;
+                }
+
+                // Pending means red by accumulation, but not already moved into MTN/finished flow.
+                return $die->ppm_status === 'red'
+                    && !in_array($die->ppm_alert_status, self::TO_MTN_EXCLUDED_ALERT_STATUSES, true);
             })
-            ->map(function ($die) {
-                return $die instanceof DieModel ? $this->formatDie($die) : null;
-            })
-            ->filter()
             ->values();
+
+        $toMtn = $toMtnDies->map(fn(DieModel $die) => $this->formatDie($die));
 
         // Dies ready to transfer BACK to Production (ppm_completed status - MTN Dies role)
         $toProduction = DieModel::with(['machineModel.tonnageStandard', 'customer'])
@@ -147,12 +162,16 @@ class TransferDiesController extends Controller
         ]);
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
             ->get();
 
         $dies = $dies
             ->filter(function ($die) {
-                return $die instanceof DieModel && $die->ppm_status === 'red';
+                if (!$die instanceof DieModel) {
+                    return false;
+                }
+
+                return $die->ppm_status === 'red'
+                    && !in_array($die->ppm_alert_status, self::TO_MTN_EXCLUDED_ALERT_STATUSES, true);
             })
             ->values();
 

@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DieModel;
 use App\Models\Customer;
-use App\Models\MachineModel;
+use App\Models\PpmHistory;
 use App\Models\PpmSchedule;
 use App\Models\TonnageStandard;
 use App\Services\DieMonitoringService;
@@ -49,6 +49,7 @@ class ScheduleController extends Controller
         // Get filters data
         $customers = Customer::active()->get(['id', 'code', 'name']);
         $tonnages = TonnageStandard::all(['id', 'tonnage', 'grade', 'standard_stroke']);
+        $doneHistoryDatesByDie = $this->getDoneHistoryDatesByDie($year, $month, $selectedDate, $customerId, $tonnageId);
 
         // Build query
         $query = DieModel::with([
@@ -117,7 +118,7 @@ class ScheduleController extends Controller
         $dies = $query->orderBy('part_number')->get();
 
         // Transform data for calendar view
-        $scheduleData = $this->transformToScheduleData($dies, $year);
+        $scheduleData = $this->transformToScheduleData($dies, $year, $doneHistoryDatesByDie);
 
         return Inertia::render('Schedule/Index', [
             'year' => (int) $year,
@@ -136,9 +137,10 @@ class ScheduleController extends Controller
     /**
      * Transform dies data to schedule format
      */
-    protected function transformToScheduleData($dies, $year): array
+    protected function transformToScheduleData($dies, $year, array $doneHistoryDatesByDie = []): array
     {
         $grouped = [];
+        $totalStrokeAtPpmByPartNumber = $this->calculateTotalStrokeAtPpmByPartNumber($dies);
         // Track which group_names already have a representative for needs_scheduling
         // So only 1 die per group shows as "needs scheduling" on the calendar
         $scheduledGroupNames = [];
@@ -164,6 +166,7 @@ class ScheduleController extends Controller
                     'plan' => [null, null, null, null],
                     'actual' => [null, null, null, null],
                     'stroke' => [null, null, null, null],
+                    'status' => [null, null, null, null],
                     'ppm_date' => [null, null, null, null],
                     'pic' => [null, null, null, null],
                 ];
@@ -179,6 +182,7 @@ class ScheduleController extends Controller
                     $monthlyData[$month]['plan'][$week] = $schedule->plan_week;
                     $monthlyData[$month]['actual'][$week] = $schedule->is_done;
                     $monthlyData[$month]['stroke'][$week] = $schedule->actual_stroke;
+                    $monthlyData[$month]['status'][$week] = $schedule->is_done ? 'Done' : 'Scheduled In';
                     $monthlyData[$month]['ppm_date'][$week] = $schedule->ppm_date?->format('d/m');
                     $monthlyData[$month]['pic'][$week] = $schedule->pic;
                 }
@@ -193,10 +197,14 @@ class ScheduleController extends Controller
                 if (isset($monthlyData[$month])) {
                     $monthlyData[$month]['actual'][$week] = true;
                     $monthlyData[$month]['stroke'][$week] = $history->stroke_at_ppm;
+                    $monthlyData[$month]['status'][$week] = 'Done';
                     $monthlyData[$month]['ppm_date'][$week] = $history->ppm_date->format('d/m');
                     $monthlyData[$month]['pic'][$week] = $history->pic;
                 }
             }
+
+            $totalStrokeAtPpm = $totalStrokeAtPpmByPartNumber[$die->part_number] ?? 0;
+            $doneHistoryDates = $doneHistoryDatesByDie[$die->id] ?? [];
 
             $grouped[$groupKey]['dies'][] = [
                 'id' => $die->id,
@@ -206,6 +214,7 @@ class ScheduleController extends Controller
                 'model' => $die->machineModel?->code,
                 'total_die' => $die->qty_die,
                 'accumulation_stroke' => $die->accumulation_stroke,
+                'total_stroke_at_ppm' => $totalStrokeAtPpm,
                 'last_stroke' => $die->last_stroke,
                 'control_stroke' => $die->control_stroke ?? $die->standard_stroke,
                 'standard_stroke' => $die->standard_stroke,
@@ -228,6 +237,9 @@ class ScheduleController extends Controller
                 'ppm_scheduled_by' => $die->ppm_scheduled_by,
                 'schedule_approved_at' => $die->schedule_approved_at?->format('d-M-Y H:i'),
                 'group_name' => $die->group_name,
+                'has_done_history' => !empty($doneHistoryDates),
+                'done_history_count' => count($doneHistoryDates),
+                'done_history_dates' => $doneHistoryDates,
                 'needs_scheduling' => (function () use ($die, &$scheduledGroupNames) {
                     $needs = $die->last_lot_date && !$die->ppm_scheduled_date
                         && in_array($die->ppm_alert_status, ['lot_date_set', 'orange_alerted', null]);
@@ -248,11 +260,95 @@ class ScheduleController extends Controller
         return array_values($grouped);
     }
 
+    private function getDoneHistoryDatesByDie($year, $month = null, $selectedDate = null, $customerId = null, $tonnageId = null): array
+    {
+        $groupedHistories = PpmHistory::query()
+            ->select(['id', 'die_id', 'ppm_date'])
+            ->whereYear('ppm_date', $year)
+            ->when($month, function ($query) use ($month) {
+                $query->whereMonth('ppm_date', $month);
+            })
+            ->when($selectedDate, function ($query) use ($selectedDate) {
+                $query->whereDate('ppm_date', $selectedDate);
+            })
+            ->whereHas('die', function ($query) use ($customerId, $tonnageId) {
+                $query->active();
+
+                if ($customerId) {
+                    $query->where('customer_id', $customerId);
+                }
+
+                if ($tonnageId) {
+                    $query->whereHas('machineModel', function ($machineQuery) use ($tonnageId) {
+                        $machineQuery->where('tonnage_standard_id', $tonnageId);
+                    });
+                }
+            })
+            ->orderByDesc('ppm_date')
+            ->orderBy('die_id')
+            ->orderBy('id')
+            ->get()
+            ->groupBy(function ($history) {
+                return $history->die_id . '|' . Carbon::parse($history->ppm_date)->format('Y-m-d');
+            });
+
+        $doneHistoryDatesByDie = [];
+
+        foreach ($groupedHistories as $histories) {
+            $history = $histories->first();
+
+            if (!$history || !$history->ppm_date) {
+                continue;
+            }
+
+            $doneHistoryDatesByDie[$history->die_id][] = Carbon::parse($history->ppm_date)->format('Y-m-d');
+        }
+
+        foreach ($doneHistoryDatesByDie as $dieId => $dates) {
+            $doneHistoryDatesByDie[$dieId] = array_values(array_unique($dates));
+        }
+
+        return $doneHistoryDatesByDie;
+    }
+
+    private function calculateTotalStrokeAtPpmByPartNumber($dies): array
+    {
+        $groupedHistories = [];
+
+        foreach ($dies as $die) {
+            foreach ($die->ppmHistories as $history) {
+                if (!$history->ppm_date) {
+                    continue;
+                }
+
+                $partNumber = $die->part_number;
+                $uniqueKey = implode('|', [
+                    (string) $history->die_id,
+                    $history->ppm_date->format('Y-m-d'),
+                ]);
+
+                if (!isset($groupedHistories[$partNumber][$uniqueKey])) {
+                    $groupedHistories[$partNumber][$uniqueKey] = (int) ($history->stroke_at_ppm ?? 0);
+                }
+            }
+        }
+
+        $totals = [];
+
+        foreach ($groupedHistories as $partNumber => $histories) {
+            $totals[$partNumber] = array_sum($histories);
+        }
+
+        return $totals;
+    }
+
     /**
      * Update schedule cell
      */
     public function updateCell(Request $request)
     {
+        abort_unless(in_array(auth()->user()?->role, ['admin', 'mtn_dies'], true), 403);
+
         $validated = $request->validate([
             'die_id' => 'required|exists:dies,id',
             'year' => 'required|integer',

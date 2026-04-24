@@ -38,7 +38,30 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
         return getLatestScheduleStatus(die) === 'Scheduled In';
     };
 
-    const hasOnlyDoneStatus = (die) => getLatestScheduleStatus(die) === 'Done';
+    const hasDoneStatus = (die) => {
+        return Object.values(die.monthly_data || {}).some((monthData) =>
+            (monthData?.status || []).some((status) => status === 'Done')
+        );
+    };
+
+    const isDoneTabActive = scheduleFilter === 'status_scheduled';
+
+    const shouldShowDoneCell = (die, monthIdx, weekIdx) => {
+        if (!isDoneTabActive) {
+            return true;
+        }
+
+        const status = die.monthly_data?.[monthIdx + 1]?.status?.[weekIdx];
+        return status === 'Done';
+    };
+
+
+    //     const hasOnlyDoneStatus = (die) => {
+//     // Cek semua status di monthly_data, jika ada yang bukan 'Done', return false
+//     return Object.values(die.monthly_data || {}).every(month =>
+//         (month.status || []).every(status => !status || status === 'Done')
+//     );
+// };
     
 
     // Count dies that need scheduling
@@ -52,7 +75,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     ) || 0;
 
     const statusScheduledCount = scheduleData?.reduce((sum, g) =>
-        sum + (g.dies?.filter(d => hasOnlyDoneStatus(d)).length || 0), 0
+        sum + (g.dies?.filter(d => hasDoneStatus(d)).length || 0), 0
     ) || 0;
 
     const hasVisibleScheduleFilters = alreadyScheduledCount > 0 || statusScheduledCount > 0 || (isMtnDies && needsScheduleCount > 0);
@@ -66,7 +89,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             dies: group.dies?.filter(d =>
                 scheduleFilter === 'needs_schedule' ? d.needs_scheduling
                 : scheduleFilter === 'already_scheduled' ? hasOnlyScheduledInStatus(d)
-                : scheduleFilter === 'status_scheduled' ? hasOnlyDoneStatus(d)
+                : scheduleFilter === 'status_scheduled' ? hasDoneStatus(d)
                 : true
             ) || [],
         })).filter(group => group.dies.length > 0);
@@ -392,7 +415,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                         ? 'Showing dies that have a LOT date but have not been scheduled for PPM yet'
                                         : scheduleFilter === 'already_scheduled'
                                             ? 'Showing dies that currently have PPM status Scheduled In'
-                                            : 'Showing dies that already have a PPM status marked Done'
+                                            : 'Showing only Done PPM cells (Scheduled In is hidden)'
                                     }
                                 </span>
                             )}
@@ -567,6 +590,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                         {/* PPM Date cells - Editable */}
                                                         {months.map((_, monthIdx) => (
                                                             weeks.map((_, weekIdx) => {
+                                                                if (!shouldShowDoneCell(die, monthIdx, weekIdx)) {
+                                                                    return (
+                                                                        <td
+                                                                            key={`${die.id}-ppm-date-hidden-${monthIdx}-${weekIdx}`}
+                                                                            className="border px-1 py-1 text-center bg-gray-50"
+                                                                        >
+                                                                            {renderCell(null)}
+                                                                        </td>
+                                                                    );
+                                                                }
+
                                                                 const value = die.monthly_data?.[monthIdx + 1]?.ppm_date?.[weekIdx];
                                                                 return renderEditableCell(
                                                                     die, monthIdx, weekIdx, 'ppm_date', value,
@@ -603,6 +637,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                         {/* Accumulation Stroke At PPM cells - Editable */}
                                                         {months.map((_, monthIdx) => (
                                                             weeks.map((_, weekIdx) => {
+                                                                if (!shouldShowDoneCell(die, monthIdx, weekIdx)) {
+                                                                    return (
+                                                                        <td
+                                                                            key={`${die.id}-stroke-hidden-${monthIdx}-${weekIdx}`}
+                                                                            className="border px-1 py-1 text-center bg-gray-50"
+                                                                        >
+                                                                            {renderCell(null)}
+                                                                        </td>
+                                                                    );
+                                                                }
+
                                                                 const value = die.monthly_data?.[monthIdx + 1]?.stroke?.[weekIdx];
                                                                 return renderEditableCell(
                                                                     die, monthIdx, weekIdx, 'stroke', value,
@@ -626,6 +671,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                         </td>
                                                         {months.map((_, monthIdx) => (
                                                             weeks.map((_, weekIdx) => {
+                                                                if (!shouldShowDoneCell(die, monthIdx, weekIdx)) {
+                                                                    return (
+                                                                        <td
+                                                                            key={`${die.id}-status-hidden-${monthIdx}-${weekIdx}`}
+                                                                            className="border px-1 py-1 text-center bg-gray-50"
+                                                                        >
+                                                                            {renderCell(null)}
+                                                                        </td>
+                                                                    );
+                                                                }
+
                                                                 const value = die.monthly_data?.[monthIdx + 1]?.status?.[weekIdx];
 
                                                                 return (
@@ -655,6 +711,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                         {/* PIC cells - Editable */}
                                                         {months.map((_, monthIdx) => (
                                                             weeks.map((_, weekIdx) => {
+                                                                if (!shouldShowDoneCell(die, monthIdx, weekIdx)) {
+                                                                    return (
+                                                                        <td
+                                                                            key={`${die.id}-pic-hidden-${monthIdx}-${weekIdx}`}
+                                                                            className="border px-1 py-1 text-center bg-gray-50"
+                                                                        >
+                                                                            {renderCell(null)}
+                                                                        </td>
+                                                                    );
+                                                                }
+
                                                                 const value = die.monthly_data?.[monthIdx + 1]?.pic?.[weekIdx];
                                                                 return renderEditableCell(
                                                                     die, monthIdx, weekIdx, 'pic', value,
