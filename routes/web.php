@@ -105,6 +105,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware(['role:admin,mtn_dies'])->group(function () {
         Route::post('ppm-form/{history}/update', [DieController::class, 'updatePpmForm'])
             ->name('ppm-form.update');
+        Route::delete('ppm-form/{history}', [DieController::class, 'destroyPpmFormHistory'])
+            ->name('ppm-form.destroy');
     });
 
     // Dies Management - View for admin, mtn_dies, mgr_gm, md, ppic
