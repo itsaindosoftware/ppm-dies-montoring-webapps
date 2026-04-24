@@ -2,6 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import { getChecklistItems, getProcessTypeLabel } from '@/Utils/PpmChecklistData';
+import { confirmDialog } from '@/Utils/swal';
 // tinggal yang print pdf
 
 
@@ -320,16 +321,22 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         setActiveDieId(dieId);
     };
 
-    const handleDeleteProcessType = () => {
+    const handleDeleteProcessType = async () => {
         if (!activeHistory?.id || isDeleting) {
             return;
         }
 
         const processLabel = getProcessTypeLabel(activeHistory.process_type);
         const partNumberLabel = activeHistory?.die?.part_number || '-';
-        const confirmed = window.confirm(
-            `Hapus process ${processLabel} untuk part number ${partNumberLabel}? Data yang dihapus hanya 1 record PPM ini.`
-        );
+        const confirmed = await confirmDialog({
+            title: 'Hapus Process?',
+            text: `Hapus process ${processLabel} untuk part number ${partNumberLabel}? Data yang dihapus hanya 1 record PPM ini.`,
+            icon: 'warning',
+            confirmButtonText: 'Ya, Hapus',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#6b7280',
+        });
 
         if (!confirmed) {
             return;
@@ -984,10 +991,10 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
 
                                     <div className="flex flex-col gap-2 text-xs text-gray-500 dark:text-gray-400 md:flex-row md:items-center md:justify-between">
                                         <div>
-                                            Menampilkan {fromResult} - {toResult} dari {totalResults} data PPM history
+                                            Show {fromResult} - {toResult} of {totalResults} PPM history
                                         </div>
                                         <div>
-                                            Halaman {currentPage} dari {lastPage}
+                                            Page {currentPage} of {lastPage}
                                         </div>
                                     </div>
 
