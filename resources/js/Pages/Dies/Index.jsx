@@ -11,6 +11,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     const [customerId, setCustomerId] = useState(filters?.customer_id || '');
     const [modelId, setModelId] = useState(filters?.machine_model_id || '');
     const [status, setStatus] = useState(filters?.status || '');
+    const [ppmDoneDate, setPpmDoneDate] = useState(filters?.ppm_done_date || '');
     const [lineFilter, setLineFilter] = useState(filters?.line || '');
     const [perPage, setPerPage] = useState(dies?.per_page || 15);
     const [viewMode, setViewMode] = useState(localStorage.getItem('dies_view_mode') || 'monitoring');
@@ -43,6 +44,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     const canBatchAction = ['admin', 'mtn_dies', 'production', 'ppic'].includes(auth.user.role);
     const isOrangeStatusSelected = (filters?.status || status) === 'orange';
     const isOrangeOrRedStatusSelected = ['orange', 'red'].includes(filters?.status || status);
+    const isPpmDoneSelected = (filters?.status || status) === 'ppm';
 
     const getFlowPpmStatusLabel = (ppmAlertStatus) => {
         switch (ppmAlertStatus) {
@@ -89,6 +91,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             customer_id: customerId || undefined,
             machine_model_id: modelId || undefined,
             status: status || undefined,
+            ppm_done_date: status === 'ppm' ? (ppmDoneDate || undefined) : undefined,
             line: lineFilter || undefined,
             per_page: perPage !== 15 ? perPage : undefined,
             ...overrides,
@@ -98,7 +101,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             if (!params[key]) delete params[key];
         });
         return params;
-    }, [search, customerId, modelId, status, lineFilter, perPage]);
+    }, [search, customerId, modelId, status, ppmDoneDate, lineFilter, perPage]);
 
     // Persist view mode
     const handleViewModeChange = (mode) => {
@@ -147,7 +150,19 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
 
     const handleStatusChange = (value) => {
         setStatus(value);
-        handleFilter({ status: value || undefined });
+
+        if (value !== 'ppm') {
+            setPpmDoneDate('');
+            handleFilter({ status: value || undefined, ppm_done_date: undefined });
+            return;
+        }
+
+        handleFilter({ status: value || undefined, ppm_done_date: ppmDoneDate || undefined });
+    };
+
+    const handlePpmDoneDateChange = (value) => {
+        setPpmDoneDate(value);
+        handleFilter({ ppm_done_date: value || undefined });
     };
 
     const handlePerPageChange = (value) => {
@@ -170,6 +185,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
         setCustomerId('');
         setModelId('');
         setStatus('');
+        setPpmDoneDate('');
         setLineFilter('');
         setPerPage(15);
         router.get(route('dies.index'));
@@ -823,6 +839,19 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                 )}
                             </div>
                         </div>
+                        {isPpmDoneSelected && (
+                            <div className="w-44">
+                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    PPM Done Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={ppmDoneDate}
+                                    onChange={(e) => handlePpmDoneDateChange(e.target.value)}
+                                    className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                                />
+                            </div>
+                        )}
                         <div className="w-44">
                             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Customer
@@ -868,7 +897,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                 <option value="green">🟢 Green (OK)</option>
                                 <option value="orange">🟠 Orange (Warning)</option>
                                 <option value="red">🔴 Red (Critical)</option>
-                                <option value="ppm">🔧 PPM Process</option>
+                                <option value="ppm">🔧 PPM Done</option>
                             </select>
                         </div>
                         <div className="flex gap-2">
@@ -971,6 +1000,11 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Accumulation Stroke
                                     </th>
+                                    {isPpmDoneSelected && (
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        PPM Number
+                                    </th>
+                                    )}
                                     {isOrangeStatusSelected && (
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Updated At
@@ -1137,6 +1171,11 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                 {die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-'}
                                             </td>
+                                            {isPpmDoneSelected && (
+                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                                {die.ppm_number_by_stroke ? `PPM #${die.ppm_number_by_stroke}` : '-'}
+                                            </td>
+                                            )}
                                             {isOrangeStatusSelected && (
                                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                 {die.updated_at || '-'}
@@ -1181,6 +1220,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                         <td colSpan={
                                             (canBatchAction ? 1 : 0) +
                                             13 +
+                                            (isPpmDoneSelected ? 1 : 0) +
                                             (isOrangeOrRedStatusSelected ? 1 : 0) +
                                             (isOrangeStatusSelected ? 1 : 0)
                                         } className="px-4 py-12 text-center">
@@ -1279,6 +1319,11 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                         PPM Standard
                                     </th>
+                                    {isPpmDoneSelected && (
+                                        <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
+                                            PPM Number
+                                        </th>
+                                    )}
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                         Status
                                     </th>
@@ -1362,6 +1407,13 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                                 {die.standard_stroke?.toLocaleString() || '-'}
                                             </span>
                                         </td>
+                                        {isPpmDoneSelected && (
+                                            <td className="px-3 py-2 text-center">
+                                                <span className="text-sm text-gray-700 dark:text-gray-300">
+                                                    {die.ppm_number_by_stroke ? `PPM #${die.ppm_number_by_stroke}` : '-'}
+                                                </span>
+                                            </td>
+                                        )}
                                         <td className="px-3 py-2 text-center">
                                             <StatusBadge
                                                 status={die.ppm_status}
@@ -1418,7 +1470,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={13 + (isOrangeOrRedStatusSelected ? 1 : 0) + (isOrangeStatusSelected ? 1 : 0)} className="px-4 py-12 text-center">
+                                    <td colSpan={13 + (isPpmDoneSelected ? 1 : 0) + (isOrangeOrRedStatusSelected ? 1 : 0) + (isOrangeStatusSelected ? 1 : 0)} className="px-4 py-12 text-center">
                                         <div className="flex flex-col items-center">
                                             <i className="fas fa-box-open text-4xl text-gray-400 mb-2"></i>
                                             <p className="text-gray-500 dark:text-gray-400">No dies found</p>

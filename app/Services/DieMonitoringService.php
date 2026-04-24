@@ -158,14 +158,16 @@ class DieMonitoringService
 
         $query->orderByDesc('created_at')->orderByDesc('id');
 
-        // Filter by PPM in-progress status (database column, can filter directly)
+        // Filter for dies that already have completed PPM history.
+        // Source of truth: ppm_histories.status = 'done'.
         if (!empty($filters['status']) && $filters['status'] === 'ppm') {
-            $query->whereIn('ppm_alert_status', [
-                'transferred_to_mtn',
-                'ppm_in_progress',
-                'additional_repair',
-                'ppm_completed',
-            ]);
+            $query->whereHas('ppmHistories', function ($ppmQuery) use ($filters) {
+                $ppmQuery->where('status', 'done');
+
+                if (!empty($filters['ppm_done_date'])) {
+                    $ppmQuery->whereDate('ppm_date', $filters['ppm_done_date']);
+                }
+            });
 
             return $query->paginate($perPage);
         }
