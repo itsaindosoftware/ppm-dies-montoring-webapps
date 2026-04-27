@@ -44,9 +44,21 @@ export default function DieShow({ auth, die }) {
         approved_by: '',
     });
 
-    // Determine if Record PPM button should be enabled
-    // Die must be transferred to MTN Dies location first
-    const canRecordPpm = canEditDies && ['transferred_to_mtn', 'ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
+    // Determine if Record PPM button should be enabled.
+    // Require full flow milestones + red status, and only for admin/mtn_dies.
+    const hasRequiredPpmFlowMilestones =
+        !!die.last_lot_date &&
+        !!die.ppm_scheduled_date &&
+        !!die.schedule_approved_at &&
+        !!die.transferred_at;
+
+    const isRecordPpmAlertStatusAllowed = ['transferred_to_mtn', 'ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
+
+    const canRecordPpm =
+        isMtnDies &&
+        die.ppm_status === 'red' &&
+        hasRequiredPpmFlowMilestones &&
+        isRecordPpmAlertStatusAllowed;
     // const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
     const canStartPpmProcessing = isMtnDies && !isStartPpmBlocked;
 
