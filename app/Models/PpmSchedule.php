@@ -19,6 +19,7 @@ class PpmSchedule extends Model
         'is_done',
         'actual_stroke',
         'ppm_date',
+        'lot4_check_date',
         'pic',
         'notes',
         'updated_by',
@@ -27,6 +28,7 @@ class PpmSchedule extends Model
     protected $casts = [
         'is_done' => 'boolean',
         'ppm_date' => 'date:Y-m-d',
+        'lot4_check_date' => 'date:Y-m-d',
     ];
 
     public function die()
@@ -39,7 +41,7 @@ class PpmSchedule extends Model
      */
     public function getWeekLabelAttribute()
     {
-        return match($this->week) {
+        return match ($this->week) {
             1 => 'I',
             2 => 'II',
             3 => 'III',

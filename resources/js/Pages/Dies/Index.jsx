@@ -13,6 +13,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     const [status, setStatus] = useState(filters?.status || '');
     const [ppmDoneDate, setPpmDoneDate] = useState(filters?.ppm_done_date || '');
     const [lineFilter, setLineFilter] = useState(filters?.line || '');
+    const is4LotCheck = filters?.is_4lot_check || '';
     const [perPage, setPerPage] = useState(dies?.per_page || 15);
     const [viewMode, setViewMode] = useState(localStorage.getItem('dies_view_mode') || 'monitoring');
     const searchTimeout = useRef(null);
@@ -93,6 +94,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             status: status || undefined,
             ppm_done_date: status === 'ppm' ? (ppmDoneDate || undefined) : undefined,
             line: lineFilter || undefined,
+            is_4lot_check: is4LotCheck || undefined,
             per_page: perPage !== 15 ? perPage : undefined,
             ...overrides,
         };
@@ -101,7 +103,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             if (!params[key]) delete params[key];
         });
         return params;
-    }, [search, customerId, modelId, status, ppmDoneDate, lineFilter, perPage]);
+    }, [search, customerId, modelId, status, ppmDoneDate, lineFilter, is4LotCheck, perPage]);
 
     // Persist view mode
     const handleViewModeChange = (mode) => {

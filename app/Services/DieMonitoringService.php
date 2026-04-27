@@ -23,15 +23,45 @@ class DieMonitoringService
     {
         $die->loadMissing(['customer', 'machineModel']);
 
+        $is4LotWorkflowAlert = (bool) $die->is_4lot_check
+            && in_array($event, ['ppm_scheduled', 'schedule_approved'], true);
+
+        if ($is4LotWorkflowAlert) {
+            $this->send4LotWorkflowNotification($die, $event, $actor, $extra);
+            return;
+        }
+
+        $targetRoles = [
+            User::ROLE_ADMIN,
+            User::ROLE_MTN_DIES,
+            User::ROLE_MGR_GM,
+            User::ROLE_MD,
+            User::ROLE_PPIC,
+            User::ROLE_PRODUCTION,
+        ];
+
         $recipients = User::where('is_active', true)
-            ->whereIn('role', [
-                User::ROLE_ADMIN,
-                User::ROLE_MTN_DIES,
-                User::ROLE_MGR_GM,
-                User::ROLE_MD,
-                User::ROLE_PPIC,
-                User::ROLE_PRODUCTION,
-            ])
+            ->whereIn('role', $targetRoles)
+            ->get();
+
+        if ($recipients->isNotEmpty()) {
+            Notification::send($recipients, new PpmWorkflowNotification($die, $event, $actor, $extra));
+        }
+    }
+
+    /**
+     * Send workflow notification specifically for 4-lot-check dies.
+     */
+    protected function send4LotWorkflowNotification(DieModel $die, string $event, ?string $actor = null, array $extra = []): void
+    {
+        $targetRoles = [
+            User::ROLE_ADMIN,
+            User::ROLE_MTN_DIES,
+            User::ROLE_PRODUCTION,
+        ];
+
+        $recipients = User::where('is_active', true)
+            ->whereIn('role', $targetRoles)
             ->get();
 
         if ($recipients->isNotEmpty()) {
@@ -145,6 +175,11 @@ class DieMonitoringService
         // Filter by line/tonnage
         if (!empty($filters['line'])) {
             $query->where('line', $filters['line']);
+        }
+
+        // Filter 4-lot check flag
+        if (array_key_exists('is_4lot_check', $filters) && $filters['is_4lot_check'] !== null && $filters['is_4lot_check'] !== '') {
+            $query->where('is_4lot_check', (int) $filters['is_4lot_check']);
         }
 
         // Search by part number or name
@@ -364,8 +399,10 @@ class DieMonitoringService
      */
     public function schedulePpm(DieModel $die, array $data): void
     {
+        $scheduleAlertStatus = $data['alert_status'] ?? 'ppm_scheduled';
+
         $scheduleData = [
-            'ppm_alert_status' => 'ppm_scheduled',
+            'ppm_alert_status' => $scheduleAlertStatus,
             'ppm_scheduled_date' => $data['scheduled_date'] ?? null,
             'ppm_scheduled_by' => $data['pic'] ?? auth()->user()?->name,
         ];
@@ -542,6 +579,7 @@ class DieMonitoringService
     {
         $advancedStatuses = [
             'ppm_scheduled',
+            '4lc_scheduled',
             'schedule_approved',
             'ppm_in_progress',
             'additional_repair',
@@ -609,6 +647,7 @@ class DieMonitoringService
                 'red_alerted',
                 'lot_date_set',
                 'ppm_scheduled',
+                '4lc_scheduled',
                 'schedule_approved',
             ];
 
@@ -861,16 +900,25 @@ class DieMonitoringService
         ];
 
         if ($newStatus === 'orange') {
-            // Send Orange Alert to all relevant users
-            $recipients = User::where('is_active', true)
-                ->whereIn('role', [
+            // Send Orange Alert
+            $is4LotAlert = (bool) $die->is_4lot_check;
+            $targetRoles = $is4LotAlert
+                ? [
+                    User::ROLE_ADMIN,
+                    User::ROLE_MTN_DIES,
+                    User::ROLE_PRODUCTION,
+                ]
+                : [
                     User::ROLE_ADMIN,
                     User::ROLE_MTN_DIES,
                     User::ROLE_MGR_GM,
                     User::ROLE_MD,
                     User::ROLE_PPIC,
                     User::ROLE_PRODUCTION,
-                ])
+                ];
+
+            $recipients = User::where('is_active', true)
+                ->whereIn('role', $targetRoles)
                 ->get();
 
             if ($recipients->isNotEmpty()) {
@@ -886,16 +934,25 @@ class DieMonitoringService
             cache()->put("ppm_orange_alert_{$die->id}_" . now()->format('Y-m-d'), true, now()->endOfDay());
 
         } elseif ($newStatus === 'red') {
-            // Send Red Alert to all relevant users
-            $recipients = User::where('is_active', true)
-                ->whereIn('role', [
+            // Send Red Alert
+            $is4LotAlert = (bool) $die->is_4lot_check;
+            $targetRoles = $is4LotAlert
+                ? [
+                    User::ROLE_ADMIN,
+                    User::ROLE_MTN_DIES,
+                    User::ROLE_PRODUCTION,
+                ]
+                : [
                     User::ROLE_ADMIN,
                     User::ROLE_MTN_DIES,
                     User::ROLE_MGR_GM,
                     User::ROLE_MD,
                     User::ROLE_PPIC,
                     User::ROLE_PRODUCTION,
-                ])
+                ];
+
+            $recipients = User::where('is_active', true)
+                ->whereIn('role', $targetRoles)
                 ->get();
 
             if ($recipients->isNotEmpty()) {

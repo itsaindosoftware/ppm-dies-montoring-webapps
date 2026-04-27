@@ -452,6 +452,7 @@ class DieModel extends Model
             'orange_alerted' => 'Orange Alert Sent',
             'lot_date_set' => 'PPIC: Last LOT Date Set',
             'ppm_scheduled' => 'MTN Dies: PPM Scheduled',
+            '4lc_scheduled' => 'MTN Dies: 4 Lot Check Scheduled',
             'schedule_approved' => 'PPIC: Schedule Approved',
             'red_alerted' => 'Red Alert Sent - Awaiting Transfer',
             'transferred_to_mtn' => 'PROD: Dies Transferred to MTN',

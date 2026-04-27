@@ -51,7 +51,7 @@ class DieController extends Controller
      */
     public function index(Request $request)
     {
-        $filters = $request->only(['customer_id', 'machine_model_id', 'status', 'line', 'search', 'ppm_done_date']);
+        $filters = $request->only(['customer_id', 'machine_model_id', 'status', 'line', 'search', 'ppm_done_date', 'is_4lot_check']);
         $perPage = (int) $request->input('per_page', 15);
         $perPage = in_array($perPage, [10, 15, 25, 50, 100, 200]) ? $perPage : 15;
 
@@ -437,6 +437,7 @@ class DieController extends Controller
         // are BEFORE MTN creates a schedule, so old schedule data should NOT be shown.
         $schedulingActiveStatuses = [
             'ppm_scheduled',
+            '4lc_scheduled',
             'schedule_approved',
             'transferred_to_mtn',
             'ppm_in_progress',
@@ -658,7 +659,7 @@ class DieController extends Controller
         $validated = $request->validate([
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
             'checklist_results' => 'nullable|array',
             'checklist_results.*.item_no' => 'required|integer',
@@ -858,7 +859,7 @@ class DieController extends Controller
         $validated = $request->validate([
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'checklist_results' => 'nullable|array',
             'checklist_results.*.item_no' => 'required|integer',
             'checklist_results.*.description' => 'required|string',
@@ -1146,7 +1147,7 @@ class DieController extends Controller
             'die_ids.*' => 'exists:dies,id',
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'checked_by' => 'nullable|string|max:100',
             'approved_by' => 'nullable|string|max:100',
             // Per-die data keyed by die ID
@@ -1328,7 +1329,7 @@ class DieController extends Controller
         $validated = $request->validate([
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
             'checklist_results' => 'nullable|array',
             'checklist_results.*.item_no' => 'required|integer',

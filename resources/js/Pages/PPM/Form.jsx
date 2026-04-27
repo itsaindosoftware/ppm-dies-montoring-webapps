@@ -1177,10 +1177,11 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                             className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
                                                             required
                                                         >
-                                                            <option value="routine">Routine</option>
+                                                            <option value="routine">PPM</option>
                                                             <option value="repair">Repair</option>
                                                             <option value="overhaul">Overhaul</option>
                                                             <option value="emergency">Emergency</option>
+                                                            <option value="4lc_maintenance">4LC Maintenance</option>
                                                         </select>
                                                     </div>
 

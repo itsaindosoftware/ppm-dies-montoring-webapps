@@ -59,6 +59,18 @@ export default function DieShow({ auth, die }) {
         die.ppm_status === 'red' &&
         hasRequiredPpmFlowMilestones &&
         isRecordPpmAlertStatusAllowed;
+
+    const canConfirm4LotCheck =
+        isPpic &&
+        !!die.is_4lot_check &&
+        !!die.ppm_scheduled_date &&
+        die.ppm_alert_status === '4lc_scheduled';
+
+    const canConfirmRegularSchedule =
+        isPpic &&
+        !die.is_4lot_check &&
+        !!die.ppm_scheduled_date &&
+        !['schedule_approved', 'red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status);
     // const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
     const canStartPpmProcessing = isMtnDies && !isStartPpmBlocked;
 
@@ -325,7 +337,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* PPIC: Confirm PPM Schedule */}
-                        {isPpic && die.ppm_scheduled_date && !['schedule_approved', 'red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
+                        {canConfirmRegularSchedule && (
                             <button
                                 onClick={async () => {
                                     const ok = await confirmAction({
@@ -342,6 +354,24 @@ export default function DieShow({ auth, die }) {
                                 ✅ Confirm PPM Schedule
                             </button>
                         )}
+                        {/* PPIC: Confirm 4 Lot Check */}
+                        {canConfirm4LotCheck && (
+                            <button
+                                onClick={async () => {
+                                    const ok = await confirmAction({
+                                        title: 'Confirm 4 Lot Check?',
+                                        text: `Confirm 4 Lot Check schedule for die ${die.part_number}?`,
+                                        icon: 'question',
+                                        confirmText: '✅ Yes, Confirm 4LC',
+                                        confirmColor: '#4f46e5',
+                                    });
+                                    if (ok) router.post(route('dies.approve-schedule', { die: die.encrypted_id }));
+                                }}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                            >
+                                ✅ Confirm 4 Lot Check
+                            </button>
+                        )}
                         {/* PROD: Transfer Dies to MTN */}
                         {isProd && die.ppm_status === 'red' && !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
                             <button
@@ -352,7 +382,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* MTN Dies: Cancel Schedule */}
-                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', 'schedule_approved'].includes(die.ppm_alert_status) && (
+                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', '4lc_scheduled', 'schedule_approved'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={() => setShowCancelScheduleModal(true)}
                                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
@@ -361,7 +391,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* MTN Dies: Reschedule */}
-                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', 'schedule_approved'].includes(die.ppm_alert_status) && (
+                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', '4lc_scheduled', 'schedule_approved'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={() => setShowRescheduleModal(true)}
                                 className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition"
