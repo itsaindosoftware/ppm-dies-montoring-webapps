@@ -51,7 +51,7 @@ class DieController extends Controller
      */
     public function index(Request $request)
     {
-        $filters = $request->only(['customer_id', 'machine_model_id', 'status', 'line', 'search']);
+        $filters = $request->only(['customer_id', 'machine_model_id', 'status', 'line', 'search', 'ppm_done_date']);
         $perPage = (int) $request->input('per_page', 15);
         $perPage = in_array($perPage, [10, 15, 25, 50, 100, 200]) ? $perPage : 15;
 
@@ -74,6 +74,9 @@ class DieController extends Controller
                 'process_type' => $die->process_type,
                 'accumulation_stroke' => $die->accumulation_stroke,
                 'standard_stroke' => $die->standard_stroke,
+                'ppm_number_by_stroke' => $die->standard_stroke > 0
+                    ? max(1, (int) ceil(max(0, (int) ($die->accumulation_stroke ?? 0)) / $die->standard_stroke))
+                    : 1,
                 'ppm_standard' => $die->ppm_standard,
                 'remaining_strokes' => $die->remaining_strokes,
                 'stroke_percentage' => $die->stroke_percentage,

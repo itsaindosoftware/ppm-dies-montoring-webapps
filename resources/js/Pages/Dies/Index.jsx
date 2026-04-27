@@ -986,9 +986,11 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         PPM Condition
                                     </th>
+                                    {!isPpmDoneSelected && (
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Status
                                     </th>
+                                    )}
                                     {isOrangeOrRedStatusSelected && (
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Flow PPM Status
@@ -998,7 +1000,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                         Last PPM
                                     </th>   
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Accumulation Stroke
+                                        {isPpmDoneSelected ? 'Stroke at PPM' : 'Accumulation Stroke'}
                                     </th>
                                     {isPpmDoneSelected && (
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -1152,12 +1154,14 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                                     )}
                                                 </div>
                                             </td>
+                                            {!isPpmDoneSelected && (
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 <StatusBadge
                                                     status={die.ppm_status}
                                                     label={die.ppm_status_label}
                                                 />
                                             </td>
+                                            )}
                                             {isOrangeOrRedStatusSelected && (
                                             <td className="px-4 py-3 min-w-[230px]">
                                                 <span className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${getFlowPpmStatusClass(die.ppm_alert_status)}`}>
@@ -1169,7 +1173,9 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                                 {die.last_ppm_date || '-'}
                                             </td>
                                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                                {die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-'}
+                                                {isPpmDoneSelected
+                                                    ? (die.total_stroke_at_ppm != null ? die.total_stroke_at_ppm.toLocaleString() : '-')
+                                                    : (die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-')}
                                             </td>
                                             {isPpmDoneSelected && (
                                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
@@ -1181,22 +1187,22 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                                 {die.updated_at || '-'}
                                             </td>
                                         )}
-                                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                                                <div className="flex items-center justify-end gap-2">
+                                            <td className="px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                                                <div className="flex items-center justify-center gap-1">
                                                     <Link
                                                         href={route('dies.show', { die: die.encrypted_id })}
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
+                                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition dark:hover:bg-blue-900/30"
+                                                        title="Detail"
                                                     >
-                                                        <i className="fas fa-eye"></i>
-                                                        <span className="hidden sm:inline">Details</span>
+                                                        <i className="fas fa-eye text-xs"></i>
                                                     </Link>
                                                     {canEditDies && (
                                                         <Link
                                                             href={route('dies.edit', { die: die.encrypted_id })}
-                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-yellow-700 bg-yellow-50 rounded-md hover:bg-yellow-100 transition dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50"
+                                                            className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded transition dark:hover:bg-yellow-900/30"
+                                                            title="Edit"
                                                         >
-                                                            <i className="fas fa-edit"></i>
-                                                            <span className="hidden sm:inline">Edit</span>
+                                                            <i className="fas fa-edit text-xs"></i>
                                                         </Link>
                                                     )}
                                                     {canEditDies && (
@@ -1205,10 +1211,10 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                                                 const ok = await confirmDelete(die.part_number);
                                                                 if (ok) router.delete(route('dies.destroy', { die: die.encrypted_id }));
                                                             }}
-                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-md hover:bg-red-100 transition dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                                                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition dark:hover:bg-red-900/30"
+                                                            title="Delete"
                                                         >
-                                                            <i className="fas fa-trash-alt"></i>
-                                                            <span className="hidden sm:inline">Delete</span>
+                                                            <i className="fas fa-trash-alt text-xs"></i>
                                                         </button>
                                                     )}
                                                 </div>
@@ -1220,7 +1226,6 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                         <td colSpan={
                                             (canBatchAction ? 1 : 0) +
                                             13 +
-                                            (isPpmDoneSelected ? 1 : 0) +
                                             (isOrangeOrRedStatusSelected ? 1 : 0) +
                                             (isOrangeStatusSelected ? 1 : 0)
                                         } className="px-4 py-12 text-center">
@@ -1314,7 +1319,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                         Last PPM Dies
                                     </th>
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
-                                        Accumulation Stroke
+                                        {isPpmDoneSelected ? 'Stroke at PPM' : 'Accumulation Stroke'}
                                     </th>
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                         PPM Standard
@@ -1324,9 +1329,11 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                             PPM Number
                                         </th>
                                     )}
+                                    {!isPpmDoneSelected && (
                                     <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                         Status
                                     </th>
+                                    )}
                                     {isOrangeOrRedStatusSelected && (
                                         <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider">
                                             Flow PPM Status
@@ -1399,7 +1406,9 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                         </td>
                                           <td className="px-3 py-2 text-center">
                                             <span className="text-sm text-gray-700 dark:text-gray-300">
-                                                {die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-'}
+                                                {isPpmDoneSelected
+                                                    ? (die.total_stroke_at_ppm != null ? die.total_stroke_at_ppm.toLocaleString() : '-')
+                                                    : (die.accumulation_stroke != null ? die.accumulation_stroke.toLocaleString() : '-')}
                                             </span>
                                         </td>
                                         <td className="px-3 py-2 text-center">
@@ -1414,12 +1423,14 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                                 </span>
                                             </td>
                                         )}
+                                        {!isPpmDoneSelected && (
                                         <td className="px-3 py-2 text-center">
                                             <StatusBadge
                                                 status={die.ppm_status}
                                                 label={die.ppm_status_label}
                                             />
                                         </td>
+                                        )}
                                         {isOrangeOrRedStatusSelected && (
                                             <td className="px-3 py-2 text-center min-w-[220px]">
                                                 <span className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${getFlowPpmStatusClass(die.ppm_alert_status)}`}>
@@ -1470,7 +1481,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={13 + (isPpmDoneSelected ? 1 : 0) + (isOrangeOrRedStatusSelected ? 1 : 0) + (isOrangeStatusSelected ? 1 : 0)} className="px-4 py-12 text-center">
+                                    <td colSpan={13 + (isOrangeOrRedStatusSelected ? 1 : 0) + (isOrangeStatusSelected ? 1 : 0)} className="px-4 py-12 text-center">
                                         <div className="flex flex-col items-center">
                                             <i className="fas fa-box-open text-4xl text-gray-400 mb-2"></i>
                                             <p className="text-gray-500 dark:text-gray-400">No dies found</p>
