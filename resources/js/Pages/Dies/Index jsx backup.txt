@@ -11,6 +11,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     const [customerId, setCustomerId] = useState(filters?.customer_id || '');
     const [modelId, setModelId] = useState(filters?.machine_model_id || '');
     const [status, setStatus] = useState(filters?.status || '');
+    const [ppmDoneDate, setPpmDoneDate] = useState(filters?.ppm_done_date || '');
     const [lineFilter, setLineFilter] = useState(filters?.line || '');
     const [perPage, setPerPage] = useState(dies?.per_page || 15);
     const [viewMode, setViewMode] = useState(localStorage.getItem('dies_view_mode') || 'monitoring');
@@ -90,6 +91,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             customer_id: customerId || undefined,
             machine_model_id: modelId || undefined,
             status: status || undefined,
+            ppm_done_date: status === 'ppm' ? (ppmDoneDate || undefined) : undefined,
             line: lineFilter || undefined,
             per_page: perPage !== 15 ? perPage : undefined,
             ...overrides,
@@ -99,7 +101,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             if (!params[key]) delete params[key];
         });
         return params;
-    }, [search, customerId, modelId, status, lineFilter, perPage]);
+    }, [search, customerId, modelId, status, ppmDoneDate, lineFilter, perPage]);
 
     // Persist view mode
     const handleViewModeChange = (mode) => {
@@ -148,7 +150,19 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
 
     const handleStatusChange = (value) => {
         setStatus(value);
-        handleFilter({ status: value || undefined });
+
+        if (value !== 'ppm') {
+            setPpmDoneDate('');
+            handleFilter({ status: value || undefined, ppm_done_date: undefined });
+            return;
+        }
+
+        handleFilter({ status: value || undefined, ppm_done_date: ppmDoneDate || undefined });
+    };
+
+    const handlePpmDoneDateChange = (value) => {
+        setPpmDoneDate(value);
+        handleFilter({ ppm_done_date: value || undefined });
     };
 
     const handlePerPageChange = (value) => {
@@ -171,6 +185,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
         setCustomerId('');
         setModelId('');
         setStatus('');
+        setPpmDoneDate('');
         setLineFilter('');
         setPerPage(15);
         router.get(route('dies.index'));
@@ -824,6 +839,19 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                 )}
                             </div>
                         </div>
+                        {isPpmDoneSelected && (
+                            <div className="w-44">
+                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    PPM Done Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={ppmDoneDate}
+                                    onChange={(e) => handlePpmDoneDateChange(e.target.value)}
+                                    className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                                />
+                            </div>
+                        )}
                         <div className="w-44">
                             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Customer

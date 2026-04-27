@@ -57,8 +57,25 @@ class DieController extends Controller
 
         $paginator = $this->monitoringService->getDies($filters, $perPage);
 
+        $ppmHistoryQuery = PpmHistory::query()
+            ->select(['die_id', 'stroke_at_ppm'])
+            ->whereIn('die_id', $paginator->getCollection()->pluck('id')->all())
+            ->where('status', 'done')
+            ->orderByDesc('ppm_date')
+            ->orderByDesc('id');
+
+        if (!empty($filters['status']) && $filters['status'] === 'ppm' && !empty($filters['ppm_done_date'])) {
+            $ppmHistoryQuery->whereDate('ppm_date', $filters['ppm_done_date']);
+        }
+
+        $latestStrokeAtPpmByDie = $ppmHistoryQuery
+            ->get()
+            ->groupBy('die_id')
+            ->map(fn($rows) => $rows->first()?->stroke_at_ppm)
+            ->toArray();
+
         // Transform paginated items to include computed attributes
-        $paginator->through(function ($die) {
+        $paginator->through(function ($die) use ($latestStrokeAtPpmByDie) {
             return [
                 'id' => $die->id,
                 'encrypted_id' => $die->encrypted_id,
@@ -96,6 +113,7 @@ class DieController extends Controller
                 'ppm_conditions_info' => $die->ppm_conditions_info,
                 'next_ppm_stroke' => $die->next_ppm_stroke,
                 'ppm_count' => $die->ppm_count ?? 0,
+                'total_stroke_at_ppm' => $latestStrokeAtPpmByDie[$die->id] ?? null,
                 'is_4lot_check' => $die->is_4lot_check,
                 'updated_at' => $die->updated_at?->format('d-M-Y H:i:s'),
 
