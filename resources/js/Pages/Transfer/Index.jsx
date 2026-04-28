@@ -64,6 +64,8 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
         router.post(route('transfer-dies.to-production', die.encrypted_id), {});
     };
 
+    const is4LotReady = (die) => die.is_4lot_check && die.ppm_alert_status === '4lc_approved';
+
     const isProduction = auth.user.role === 'production' || auth.user.role === 'admin';
     const isMtnDies = auth.user.role === 'mtn_dies' || auth.user.role === 'admin';
 
@@ -186,8 +188,9 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                         <td className="px-4 py-3">
                                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                                 die.ppm_alert_status === 'red_alerted' ? 'bg-red-100 text-red-700' :
-                                                die.ppm_alert_status === 'ppm_completed' ? 'bg-green-100 text-green-700' :
-                                                die.ppm_alert_status === 'ppm_in_progress' ? 'bg-blue-100 text-blue-700' :
+                                                ['ppm_completed', '4lc_completed'].includes(die.ppm_alert_status) ? 'bg-green-100 text-green-700' :
+                                                ['ppm_in_progress', '4lc_in_progress'].includes(die.ppm_alert_status) ? 'bg-blue-100 text-blue-700' :
+                                                ['transferred_to_mtn_4lc'].includes(die.ppm_alert_status) ? 'bg-orange-100 text-orange-700' :
                                                 !die.ppm_alert_status ? 'bg-green-100 text-green-700' :
                                                 'bg-yellow-100 text-yellow-700'
                                             }`}>
@@ -205,7 +208,8 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                                     onClick={() => handleSingleTransferToMtn(die)}
                                                     className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
                                                 >
-                                                    Transfer to MTN
+                                                    {/* Transfer to MTN */}
+                                                    {is4LotReady(die) ? 'Transfer to MTN (4 LC)' : 'Transfer to MTN'}
                                                 </button>
                                             )}
                                             {activeTab === 'to_prod' && isMtnDies && (

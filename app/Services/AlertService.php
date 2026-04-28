@@ -45,9 +45,18 @@ class AlertService
 
                 // Update ppm_alert_status to orange_alerted (only if not already further in the flow)
                 $advancedStatuses = [
-                    'orange_alerted', 'lot_date_set', 'ppm_scheduled', 'schedule_approved',
-                    'red_alerted', 'transferred_to_mtn', 'ppm_in_progress',
-                    'additional_repair', 'ppm_completed',
+                    'orange_alerted',
+                    'lot_date_set',
+                    'ppm_scheduled',
+                    'schedule_approved',
+                    'red_alerted',
+                    'transferred_to_mtn',
+                    'transferred_to_mtn_4lc',
+                    'ppm_in_progress',
+                    '4lc_in_progress',
+                    'additional_repair',
+                    'ppm_completed',
+                    '4lc_completed',
                 ];
                 if (!in_array($die->ppm_alert_status, $advancedStatuses)) {
                     $die->update([
@@ -71,7 +80,7 @@ class AlertService
 
                 // Mark die as needing PPM processing and record timestamp for timeline
                 // Jangan downgrade status yang sudah lebih maju
-                if (!in_array($die->ppm_alert_status, ['red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'])) {
+                if (!in_array($die->ppm_alert_status, ['red_alerted', 'transferred_to_mtn', 'transferred_to_mtn_4lc', 'ppm_in_progress', '4lc_in_progress', 'additional_repair', 'ppm_completed', '4lc_completed'])) {
                     $die->update([
                         'ppm_alert_status' => 'red_alerted',
                         'red_alerted_at' => now(),

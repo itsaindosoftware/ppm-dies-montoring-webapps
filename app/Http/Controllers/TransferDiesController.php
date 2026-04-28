@@ -13,6 +13,8 @@ class TransferDiesController extends Controller
         'red_alerted',
         'lot_date_set',
         'ppm_scheduled',
+        '4lc_scheduled',
+        '4lc_approved',
         'schedule_approved',
     ];
 
@@ -38,7 +40,14 @@ class TransferDiesController extends Controller
             ->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
             ->get()
             ->filter(function ($die) {
-                return $die instanceof DieModel && $die->ppm_status === 'red';
+                // return $die instanceof DieModel && $die->ppm_status === 'red';
+                if (!$die instanceof DieModel) {
+                    return false;
+                }
+
+                $is4LotReady = $die->is_4lot_check && $die->ppm_alert_status === '4lc_approved';
+
+                return $die->ppm_status === 'red' || $is4LotReady;
             })
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -49,7 +58,7 @@ class TransferDiesController extends Controller
         // Dies ready to transfer BACK to Production (ppm_completed status - MTN Dies role)
         $toProduction = DieModel::with(['machineModel.tonnageStandard', 'customer'])
             ->active()
-            ->where('ppm_alert_status', 'ppm_completed')
+            ->whereIn('ppm_alert_status', ['ppm_completed', '4lc_completed'])
             ->get()
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -60,7 +69,7 @@ class TransferDiesController extends Controller
         // Dies currently at MTN Dies (transferred_to_mtn, ppm_in_progress, additional_repair)
         $atMtn = DieModel::with(['machineModel.tonnageStandard', 'customer'])
             ->active()
-            ->whereIn('ppm_alert_status', ['transferred_to_mtn', 'ppm_in_progress', 'additional_repair'])
+            ->whereIn('ppm_alert_status', ['transferred_to_mtn', 'transferred_to_mtn_4lc', 'ppm_in_progress', '4lc_in_progress', 'additional_repair'])
             ->get()
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -152,7 +161,14 @@ class TransferDiesController extends Controller
 
         $dies = $dies
             ->filter(function ($die) {
-                return $die instanceof DieModel && $die->ppm_status === 'red';
+                // return $die instanceof DieModel && $die->ppm_status === 'red';
+                if (!$die instanceof DieModel) {
+                    return false;
+                }
+
+                $is4LotReady = $die->is_4lot_check && $die->ppm_alert_status === '4lc_approved';
+
+                return $die->ppm_status === 'red' || $is4LotReady;
             })
             ->values();
 
@@ -188,7 +204,7 @@ class TransferDiesController extends Controller
         ]);
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->where('ppm_alert_status', 'ppm_completed')
+            ->whereIn('ppm_alert_status', ['ppm_completed', '4lc_completed'])
             ->get();
 
         if ($dies->isEmpty()) {
@@ -227,6 +243,8 @@ class TransferDiesController extends Controller
             'ppm_status' => $die->ppm_status,
             'ppm_alert_status' => $die->ppm_alert_status,
             'ppm_alert_status_label' => $die->ppm_alert_status_label,
+            'is_4lot_check' => (bool) $die->is_4lot_check,
+            'group_name' => $die->group_name,
             'transferred_at' => $die->transferred_at?->format('d-M-Y H:i'),
             'transferred_by' => $die->transferred_by,
             'transfer_from_location' => $die->transfer_from_location,

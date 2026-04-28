@@ -15,7 +15,7 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
     const totalDies = stats?. total || 0;
     const okDies = stats?.ok || 0;
     const healthPercentage = totalDies > 0 ? Math.round((okDies / totalDies) * 100) : 0;
-    const canSee4LotCheck = ['admin', 'mtn_dies', 'production'].includes(auth?.user?.role);
+    const canSee4LotCheck = ['admin', 'mtn_dies', 'production', 'ppic'].includes(auth?.user?.role);
 
     const groupColors = {
         A1: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', badge: 'bg-green-100 text-green-800' },

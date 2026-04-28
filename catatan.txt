@@ -4,10 +4,14 @@
 
     Setiap Push Ke Server dan Pull Dari Server, harus backup db dulu
 
+    baru sampai 4 Lot Check Satu Group Name yang ambigu
+
     yang ini ditunda dulu  (nanti lanjut hari senin)
     maaf maksudnya bagaimna yang kode ini
  {die.accumulation_stroke?. toLocaleString()}
  diisi oleh jumlah akumulasi perhitungan total semua stroke_at_ppm berdasarkan satu part number, soalnya data di database yang ada di gambar, datanya ada
+
+ jangan lupa setiap selesai (setelah) menambahkan route baru ke web.php, jalankan php artisan optimize
 
 
 21 - 04 - 2026
@@ -63,3 +67,4 @@ Formula praktis:
 lots_since_last_maintenance = floor((accumulation_stroke - stroke_at_last_maintenance) / lot_size).
 Jika lots_since_last_maintenance >= 4 dan #sym:is_4lot_check true, maka maintenance_required.
 Kalau Anda setuju, saya bisa bantu turunkan ini jadi rancangan implementasi teknis per file (controller, service, model, dan tampilan), termasuk urutan migrasi data agar tidak mengganggu die yang sedang berjalan workflow-nya.
+

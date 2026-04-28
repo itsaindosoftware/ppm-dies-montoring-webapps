@@ -440,9 +440,12 @@ class DieController extends Controller
             '4lc_scheduled',
             'schedule_approved',
             'transferred_to_mtn',
+            'transferred_to_mtn_4lc',
             'ppm_in_progress',
+            '4lc_in_progress',
             'additional_repair',
             'ppm_completed',
+            '4lc_completed',
         ];
 
         if (in_array($die->ppm_alert_status, $schedulingActiveStatuses)) {
@@ -543,9 +546,16 @@ class DieController extends Controller
                     'ppm_started_at' => $p->ppm_started_at?->format('d-M-Y H:i'),
                     'ppm_completed_at' => $p->ppm_completed_at?->format('d-M-Y H:i'),
                     'completed_by' => $p->completed_by,
+                    'lot_check_status' => $p->lot_check_status,
+                    'lot_check_status_label' => $p->lot_check_status_label,
+                    'lot_check_started_at' => $p->lot_check_started_at?->format('d-M-Y H:i'),
+                    'lot_check_completed_at' => $p->lot_check_completed_at?->format('d-M-Y H:i'),
+                    'lot_check_completed_by' => $p->lot_check_completed_by,
+                    'lot_check_history_id' => $p->lot_check_history_id,
                     'notes' => $p->notes,
                 ]),
                 'ppm_process_progress' => $die->ppm_process_progress,
+                'lot_check_progress' => $die->lot_check_progress,
                 // Remarks
                 'schedule_remark' => $die->schedule_remark,
                 'schedule_change_reason' => $die->schedule_change_reason,
@@ -681,6 +691,40 @@ class DieController extends Controller
     }
 
     /**
+     * Record 4LC maintenance
+     */
+    public function record4lcMaintenance(Request $request, DieModel $die)
+    {
+        if (!$die->is_4lot_check || !in_array($die->ppm_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', 'additional_repair'])) {
+            return redirect()->back()
+                ->with('error', 'Cannot record 4LC maintenance. Die must be transferred to MTN Dies first.');
+        }
+
+        $validated = $request->validate([
+            'ppm_date' => 'required|date',
+            'pic' => 'required|string|max:100',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
+            'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
+            'checklist_results' => 'nullable|array',
+            'checklist_results.*.item_no' => 'required|integer',
+            'checklist_results.*.description' => 'required|string',
+            'checklist_results.*.result' => 'required|in:normal,unusual',
+            'checklist_results.*.remark' => 'nullable|string',
+            'work_performed' => 'nullable|string',
+            'parts_replaced' => 'nullable|string',
+            'findings' => 'nullable|string',
+            'recommendations' => 'nullable|string',
+            'checked_by' => 'nullable|string|max:100',
+            'approved_by' => 'nullable|string|max:100',
+        ]);
+
+        $this->monitoringService->record4lcMaintenance($die, $validated);
+
+        return redirect()->back()
+            ->with('success', '4LC maintenance recorded successfully.');
+    }
+
+    /**
      * Schedule PPM for the specified die (after Orange Alert)
      * Flow: Orange Alert → MTN Dies: Create Schedule of PPM
      * Now supports schedule_remark
@@ -714,6 +758,18 @@ class DieController extends Controller
     }
 
     /**
+     * PPIC: Approve 4 Lot Check Schedule
+     * Flow: MTN Dies creates 4LC schedule → PPIC confirms it
+     */
+    public function approve4LotCheckSchedule(Request $request, DieModel $die)
+    {
+        $this->monitoringService->approve4LotCheckSchedule($die);
+
+        return redirect()->back()
+            ->with('success', '4 Lot Check schedule has been approved by PPIC.');
+    }
+
+    /**
      * Start PPM Processing for the specified die
      * Flow: MTN Dies starts PPM Processing
      * Now supports multi-process type selection
@@ -740,6 +796,33 @@ class DieController extends Controller
 
         return redirect()->back()
             ->with('success', 'PPM Processing has been started.' .
+                (!empty($validated['process_types']) ? ' ' . count($validated['process_types']) . ' processes initialized.' : ''));
+    }
+
+    /**
+     * Start 4LC Processing for the specified die
+     */
+    public function start4lcProcessing(Request $request, DieModel $die)
+    {
+        if (!$die->is_4lot_check || !$die->schedule_approved_at) {
+            return redirect()->back()
+                ->with('error', 'Cannot start 4LC Processing. 4LC schedule must be confirmed by PPIC first.');
+        }
+
+        if ($die->ppm_alert_status !== 'transferred_to_mtn_4lc' || !$die->transferred_at) {
+            return redirect()->back()
+                ->with('error', 'Cannot start 4LC Processing. Die must be transferred by Production to MTN Dies first.');
+        }
+
+        $validated = $request->validate([
+            'process_types' => 'nullable|array',
+            'process_types.*' => 'in:pierce,trim',
+        ]);
+
+        $this->monitoringService->start4lcProcessing($die, $validated['process_types'] ?? []);
+
+        return redirect()->back()
+            ->with('success', '4LC Processing has been started.' .
                 (!empty($validated['process_types']) ? ' ' . count($validated['process_types']) . ' processes initialized.' : ''));
     }
 
@@ -1059,7 +1142,7 @@ class DieController extends Controller
         ]);
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->where('ppm_alert_status', 'ppm_completed')
+            ->whereIn('ppm_alert_status', ['ppm_completed', '4lc_completed'])
             ->get();
 
         if ($dies->isEmpty()) {

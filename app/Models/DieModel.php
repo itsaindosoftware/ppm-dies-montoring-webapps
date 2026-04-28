@@ -233,6 +233,26 @@ class DieModel extends Model
         ];
     }
 
+    /**
+     * Get count of completed processes vs total processes for current 4LC cycle
+     */
+    public function getLotCheckProgressAttribute(): array
+    {
+        $processes = $this->dieProcesses;
+        $total = $processes->count();
+        $completed = $processes->where('lot_check_status', 'completed')->count();
+        $inProgress = $processes->where('lot_check_status', 'in_progress')->count();
+
+        return [
+            'total' => $total,
+            'completed' => $completed,
+            'in_progress' => $inProgress,
+            'pending' => $total - $completed - $inProgress,
+            'all_completed' => $total > 0 && $completed === $total,
+            'percentage' => $total > 0 ? round(($completed / $total) * 100) : 0,
+        ];
+    }
+
     // ==================== ACCESSORS ====================
 
     /**
@@ -453,12 +473,16 @@ class DieModel extends Model
             'lot_date_set' => 'PPIC: Last LOT Date Set',
             'ppm_scheduled' => 'MTN Dies: PPM Scheduled',
             '4lc_scheduled' => 'MTN Dies: 4 Lot Check Scheduled',
+            '4lc_approved' => 'PPIC: 4 Lot Check Approved',
             'schedule_approved' => 'PPIC: Schedule Approved',
             'red_alerted' => 'Red Alert Sent - Awaiting Transfer',
             'transferred_to_mtn' => 'PROD: Dies Transferred to MTN',
+            'transferred_to_mtn_4lc' => 'PROD: 4LC Dies Transferred to MTN',
             'ppm_in_progress' => 'MTN Dies: PPM In Progress',
+            '4lc_in_progress' => 'MTN Dies: 4LC In Progress',
             'additional_repair' => 'MTN Dies: Additional Repair Needed',
             'ppm_completed' => 'PPM Completed - Awaiting Transfer Back',
+            '4lc_completed' => '4LC Completed - Awaiting Transfer Back',
             'special_repair' => 'Special Repair In Progress',
             default => null,
         };

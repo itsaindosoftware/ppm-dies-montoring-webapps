@@ -19,12 +19,19 @@ class DieProcess extends Model
         'ppm_completed_at',
         'ppm_history_id',
         'completed_by',
+        'lot_check_status',
+        'lot_check_started_at',
+        'lot_check_completed_at',
+        'lot_check_history_id',
+        'lot_check_completed_by',
         'notes',
     ];
 
     protected $casts = [
         'ppm_started_at' => 'datetime',
         'ppm_completed_at' => 'datetime',
+        'lot_check_started_at' => 'datetime',
+        'lot_check_completed_at' => 'datetime',
     ];
 
     protected $appends = ['encrypted_id'];
@@ -59,6 +66,16 @@ class DieProcess extends Model
     public function getStatusLabelAttribute(): string
     {
         return match ($this->ppm_status) {
+            'pending' => '⏳ Pending',
+            'in_progress' => '🔧 In Progress',
+            'completed' => '✅ Completed',
+            default => 'Unknown',
+        };
+    }
+
+    public function getLotCheckStatusLabelAttribute(): string
+    {
+        return match ($this->lot_check_status) {
             'pending' => '⏳ Pending',
             'in_progress' => '🔧 In Progress',
             'completed' => '✅ Completed',
