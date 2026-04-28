@@ -4,10 +4,16 @@
 
     Setiap Push Ke Server dan Pull Dari Server, harus backup db dulu
 
+    71391-I6000
+
+    baru sampai 4 Lot Check Satu Group Name yang ambigu
+
     yang ini ditunda dulu  (nanti lanjut hari senin)
     maaf maksudnya bagaimna yang kode ini
  {die.accumulation_stroke?. toLocaleString()}
  diisi oleh jumlah akumulasi perhitungan total semua stroke_at_ppm berdasarkan satu part number, soalnya data di database yang ada di gambar, datanya ada
+
+ jangan lupa setiap selesai (setelah) menambahkan route baru ke web.php, jalankan php artisan optimize
 
 
 21 - 04 - 2026
@@ -18,7 +24,52 @@ fitur clear
 
 utf8mb4_general_ci
 
+composer install
+php artisan key:generate
+
 password
 adminsakti
 
 yang buat konfirmasi jadwal konfirmasi tanggal ppm di tombol Confirm PPm Schedule
+
+setelah sudah 4x lot check, maka wajib ada maintenance (bukan start ppm processing)
+checked={data.is_4lot_check}
+
+Menurut saya, kalau #sym:is_4lot_check aktif, pendekatan terbaik adalah menjadikan Maintenance sebagai gate wajib di workflow, bukan opsional dan bukan lewat tombol Start PPM Processing.
+
+Kenapa sekarang belum terjadi
+
+Flag #sym:is_4lot_check saat ini baru dipakai untuk tampilan/form, belum jadi hard rule alur proses.
+Tombol Start PPM Processing dikontrol dari logic UI di Show.jsx:24 dan Show.jsx:63, tapi tidak ada pengecekan khusus #sym:is_4lot_check.
+Backend Start PPM Processing di DieController.php:720 dan DieMonitoringService.php:493 juga belum memaksa maintenance dulu.
+Di model, lots per cycle memang 4, tapi enforcement wajib maintenance belum ada di state machine DieModel.php.
+Langkah yang baik (best practice pabrik otomotif)
+
+Definisikan state baru:
+maintenance_required → maintenance_in_progress → maintenance_completed.
+Trigger otomatis:
+saat lot ke-4 tercapai (untuk die dengan #sym:is_4lot_check), langsung set ke maintenance_required.
+Interlock produksi:
+selama maintenance_required/in_progress, input produksi untuk die itu diblok atau minimal hard warning + supervisor override.
+Ubah aksi di UI:
+di tahap ini jangan tampilkan Start PPM Processing, ganti tombol menjadi Start Maintenance.
+Wajib evidence:
+maintenance tidak boleh complete tanpa checklist, PIC, waktu mulai-selesai, temuan, tindakan, spare part, approval.
+Setelah maintenance_completed:
+baru lanjutkan alur berikutnya (misalnya transfer atau record PPM sesuai kebijakan plant Anda).
+Aturan backend yang wajib (paling penting)
+
+Di endpoint Start PPM Processing:
+jika #sym:is_4lot_check = true dan status belum maintenance_completed, return error.
+Di endpoint Record PPM:
+tambahkan validasi sama, supaya tidak bisa bypass via API/Postman.
+Di job/perhitungan status:
+ketika mencapai checkpoint 4 lot, set maintenance_required secara otomatis (bukan menunggu user klik manual).
+Parameter trigger yang aman
+
+Gunakan basis stroke sejak maintenance/PPM terakhir, bukan akumulasi total lifetime.
+Formula praktis:
+lots_since_last_maintenance = floor((accumulation_stroke - stroke_at_last_maintenance) / lot_size).
+Jika lots_since_last_maintenance >= 4 dan #sym:is_4lot_check true, maka maintenance_required.
+Kalau Anda setuju, saya bisa bantu turunkan ini jadi rancangan implementasi teknis per file (controller, service, model, dan tampilan), termasuk urutan migrasi data agar tidak mengganggu die yang sedang berjalan workflow-nya.
+

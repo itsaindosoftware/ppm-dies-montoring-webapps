@@ -63,7 +63,10 @@ class ScheduleController extends Controller
                 }
 
                 if ($selectedDate) {
-                    $q->whereDate('ppm_date', $selectedDate);
+                    $q->where(function ($dateQuery) use ($selectedDate) {
+                        $dateQuery->whereDate('ppm_date', $selectedDate)
+                            ->orWhereDate('lot4_check_date', $selectedDate);
+                    });
                 }
             },
             'ppmHistories' => function ($q) use ($year, $month, $selectedDate) {
@@ -99,7 +102,10 @@ class ScheduleController extends Controller
                     }
 
                     if ($selectedDate) {
-                        $scheduleQuery->whereDate('ppm_date', $selectedDate);
+                        $scheduleQuery->where(function ($dateQuery) use ($selectedDate) {
+                            $dateQuery->whereDate('ppm_date', $selectedDate)
+                                ->orWhereDate('lot4_check_date', $selectedDate);
+                        });
                     }
                 })->orWhereHas('ppmHistories', function ($historyQuery) use ($year, $month, $selectedDate) {
                     $historyQuery->whereYear('ppm_date', $year);
@@ -168,6 +174,7 @@ class ScheduleController extends Controller
                     'stroke' => [null, null, null, null],
                     'status' => [null, null, null, null],
                     'ppm_date' => [null, null, null, null],
+                    'lot4_check_date' => [null, null, null, null],
                     'pic' => [null, null, null, null],
                 ];
             }
@@ -184,6 +191,7 @@ class ScheduleController extends Controller
                     $monthlyData[$month]['stroke'][$week] = $schedule->actual_stroke;
                     $monthlyData[$month]['status'][$week] = $schedule->is_done ? 'Done' : 'Scheduled In';
                     $monthlyData[$month]['ppm_date'][$week] = $schedule->ppm_date?->format('d/m');
+                    $monthlyData[$month]['lot4_check_date'][$week] = $schedule->lot4_check_date?->format('d/m');
                     $monthlyData[$month]['pic'][$week] = $schedule->pic;
                 }
             }
@@ -211,6 +219,7 @@ class ScheduleController extends Controller
                 'encrypted_id' => $die->encrypted_id,
                 'part_number' => $die->part_number,
                 'part_name' => $die->part_name,
+                'is_4lot_check' => (int) ($die->is_4lot_check ?? 0),
                 'model' => $die->machineModel?->code,
                 'total_die' => $die->qty_die,
                 'accumulation_stroke' => $die->accumulation_stroke,
@@ -354,7 +363,7 @@ class ScheduleController extends Controller
             'year' => 'required|integer',
             'month' => 'required|integer|min:1|max:12',
             'week' => 'required|integer|min:1|max:4',
-            'field' => 'required|in:forecast,plan,actual,stroke,ppm_date,pic',
+            'field' => 'required|in:forecast,plan,actual,stroke,ppm_date,lot4_check_date,pic',
             'value' => 'nullable',
         ]);
 
@@ -363,8 +372,9 @@ class ScheduleController extends Controller
             'updated_by' => auth()->user()?->name,
         ];
 
-        // When setting ppm_date via calendar, auto-fill pic and update die record
-        if ($validated['field'] === 'ppm_date' && $validated['value']) {
+        // When setting schedule dates via calendar, auto-fill pic and update die workflow state.
+        // For 4-lot dies, lot4_check_date should also drive ppm_scheduled_date + ppm_alert_status.
+        if (in_array($validated['field'], ['ppm_date', 'lot4_check_date'], true) && $validated['value']) {
             $existing = PpmSchedule::where([
                 'die_id' => $validated['die_id'],
                 'year' => $validated['year'],
@@ -376,16 +386,27 @@ class ScheduleController extends Controller
                 $updateFields['pic'] = auth()->user()?->name;
             }
 
-            // Use monitoring service to update die record, set ppm_alert_status, and send notifications
+            // Use monitoring service to update die record and set ppm_alert_status when relevant.
             $die = DieModel::find($validated['die_id']);
-            if ($die) {
+            $shouldSetPpmScheduleFromCalendar =
+                $die && (
+                    $validated['field'] === 'ppm_date' ||
+                    ($validated['field'] === 'lot4_check_date' && (bool) $die->is_4lot_check)
+                );
+
+            if ($shouldSetPpmScheduleFromCalendar) {
+                $alertStatus = ($validated['field'] === 'lot4_check_date' && (bool) $die->is_4lot_check)
+                    ? '4lc_scheduled'
+                    : 'ppm_scheduled';
+
                 $this->monitoringService->schedulePpm($die, [
                     'scheduled_date' => $validated['value'],
                     'pic' => auth()->user()?->name,
+                    'alert_status' => $alertStatus,
                     'skip_schedule_record' => true, // Calendar manages its own PpmSchedule record below
                 ]);
 
-                // Also create calendar PpmSchedule records for group members
+                // Also create calendar PpmSchedule records for group members.
                 if ($die->group_name) {
                     $groupMembers = DieModel::where('group_name', $die->group_name)
                         ->where('id', '!=', $die->id)
@@ -430,6 +451,7 @@ class ScheduleController extends Controller
             'actual' => 'is_done',
             'stroke' => 'actual_stroke',
             'ppm_date' => 'ppm_date',
+            'lot4_check_date' => 'lot4_check_date',
             'pic' => 'pic',
             default => $field,
         };

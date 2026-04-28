@@ -63,12 +63,29 @@ class PpmHistoryReportExport implements FromCollection, WithHeadings, WithStyles
     {
         $groupedHistories = PpmHistory::with(['die.customer', 'die.machineModel'])
             ->whereBetween('ppm_date', [$this->dateFrom, $this->dateTo])
-            ->orderByDesc('ppm_date')
-            ->orderBy('die_id')
-            ->orderBy('id')
             ->get()
             ->groupBy(function ($history) {
                 return $history->die_id . '|' . $history->ppm_date->format('Y-m-d');
+            })
+            ->values();
+
+        $groupedHistories = $groupedHistories
+            ->sort(function ($left, $right) {
+                $leftFirst = $left->first();
+                $rightFirst = $right->first();
+
+                $leftGroup = strtolower((string) ($leftFirst?->die?->group_name ?? ''));
+                $rightGroup = strtolower((string) ($rightFirst?->die?->group_name ?? ''));
+
+                if ($leftGroup !== $rightGroup) {
+                    return strcmp($leftGroup, $rightGroup);
+                }
+
+                $leftDate = $leftFirst?->ppm_date?->toDateString() ?? '';
+                $rightDate = $rightFirst?->ppm_date?->toDateString() ?? '';
+
+                // Keep latest PPM date first inside the same dies group.
+                return strcmp($rightDate, $leftDate);
             })
             ->values();
 

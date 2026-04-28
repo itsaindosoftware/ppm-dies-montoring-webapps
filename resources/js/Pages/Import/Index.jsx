@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 
-export default function ImportIndex({ auth, importLogs = [] }) {
+export default function ImportIndex({ auth, importLogs = [], importProductionChangeLogs = [] }) {
     const { flash } = usePage().props;
     const [activeTab, setActiveTab] = useState('production');
     const [showResultModal, setShowResultModal] = useState(false);
@@ -129,31 +129,31 @@ export default function ImportIndex({ auth, importLogs = [] }) {
 
                     {/* Tabs */}
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden">
-                        <div className="border-b border-gray-200 dark:border-gray-700">
-                            <nav className="flex -mb-px">
+                        <div className="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+                            <nav className="flex -mb-px w-max min-w-full whitespace-nowrap">
                                 <button
                                     onClick={() => setActiveTab('production')}
-                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+                                    className={`shrink-0 px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
                                         activeTab === 'production'
                                             ?  'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover: text-gray-700 hover: border-gray-300'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                                 >
                                     <i className="fas fa-cogs"></i> Production Log (Act_Prod)
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('dies')}
-                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+                                    className={`shrink-0 px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
                                         activeTab === 'dies'
                                             ?  'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover: text-gray-700 hover: border-gray-300'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                                 >
                                     <i className="fas fa-wrench"></i> Dies Master
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('schedule')}
-                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+                                    className={`shrink-0 px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
                                         activeTab === 'schedule'
                                             ? 'border-blue-500 text-blue-600'
                                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -163,13 +163,23 @@ export default function ImportIndex({ auth, importLogs = [] }) {
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('history')}
-                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+                                    className={`shrink-0 px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
                                         activeTab === 'history'
                                             ? 'border-blue-500 text-blue-600'
                                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                                 >
                                     <i className="fas fa-history"></i> Import History
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('import-change-history')}
+                                    className={`shrink-0 px-6 py-4 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+                                        activeTab === 'import-change-history'
+                                            ? 'border-blue-500 text-blue-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <i className="fas fa-exchange-alt"></i> Import Change Log
                                 </button>
                             </nav>
                         </div>
@@ -197,7 +207,7 @@ export default function ImportIndex({ auth, importLogs = [] }) {
 
                                     {/* Template Preview */}
                                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 overflow-hidden">
-                                        <h4 className="font-medium text-gray-900 dark: text-gray-100 mb-3 flex items-center gap-2">
+                                        <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
                                             <i className="fas fa-clipboard-list text-gray-600"></i> Template Format Preview:
                                         </h4>
                                         <div className="overflow-x-auto">
@@ -310,7 +320,7 @@ export default function ImportIndex({ auth, importLogs = [] }) {
                                     </form>
 
                                     {/* Info */}
-                                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark: border-yellow-800 rounded-lg p-4">
+                                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                                         <h4 className="font-medium text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
                                             <span>⚠️</span> Important Notes:
                                         </h4>
@@ -446,7 +456,7 @@ export default function ImportIndex({ auth, importLogs = [] }) {
 
                                     {/* Info */}
                                     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                                        <h4 className="font-medium text-blue-800 dark: text-blue-200 flex items-center gap-2">
+                                        <h4 className="font-medium text-blue-800 dark:text-blue-200 flex items-center gap-2">
                                             <span>ℹ️</span> Import Behavior:
                                         </h4>
                                         <ul className="text-sm text-blue-700 dark:text-blue-300 mt-2 list-disc list-inside space-y-1">
@@ -872,6 +882,54 @@ export default function ImportIndex({ auth, importLogs = [] }) {
                                         <div className="text-center py-12 text-gray-400">
                                             <i className="fas fa-inbox text-4xl mb-3 block"></i>
                                             <p>No import history yet</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ==================== Import Production Change History ==================== */}
+                            {activeTab === 'import-change-history' && (
+                                <div className="space-y-6">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                            <i className="fas fa-exchange-alt text-blue-500"></i> History Change Log Import Production Log
+                                        </h3>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            Data perubahan accumulation stroke dari proses import production log
+                                        </p>
+                                    </div>
+
+                                    {importProductionChangeLogs.length > 0 ? (
+                                        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-gray-50 dark:bg-gray-700">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Changed At</th>
+                                                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Part Number</th>
+                                                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Part Name</th>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Old Stroke</th>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">New Stroke</th>
+                                                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Changed By</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                    {importProductionChangeLogs.map((log) => (
+                                                        <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400 whitespace-nowrap">{log.changed_at}</td>
+                                                            <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{log.part_number || '-'}</td>
+                                                            <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{log.part_name || '-'}</td>
+                                                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{log.old_stroke}</td>
+                                                            <td className="px-3 py-2 text-right font-semibold text-blue-700 dark:text-blue-300">{log.new_stroke}</td>
+                                                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{log.changed_by}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-12 text-gray-400">
+                                            <i className="fas fa-inbox text-4xl mb-3 block"></i>
+                                            <p>No change log from import production yet</p>
                                         </div>
                                     )}
                                 </div>

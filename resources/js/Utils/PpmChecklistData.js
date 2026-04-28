@@ -16,6 +16,8 @@ export const PROCESS_TYPES = [
     { value: 'cam_pierce', label: 'CAM-PIERCE' },
 ];
 
+export const FOUR_LOT_CHECK_PROCESS_TYPES = ['pierce', 'trim'];
+
 export const CHECKLIST_ITEMS = {
     blank_pierce: [
         { no: 1, description_en: 'The state Upper plate Lower plate, bent, deformed or not.', description_id: 'Keadaan dari upper plate lower plate, bengkok, cacat atau tidak.' },
@@ -117,7 +119,30 @@ export const CHECKLIST_ITEMS = {
     ],
 };
 
-export const getChecklistItems = (processType) => {
+export const FOUR_LOT_CHECK_CHECKLIST_ITEMS = {
+    pierce: [
+        { no: 1, description_en: 'Check & Polishing Shoulder Punch', description_id: 'Check & Polishing Shoulder Punch' },
+        { no: 2, description_en: 'Check & Polishing Button Dies', description_id: 'Check & Polishing Button Dies' },
+    ],
+    trim: [
+        { no: 1, description_en: 'Check & Polishing Cutting Trim Upper', description_id: 'Check & Polishing Cutting Trim Upper' },
+        { no: 2, description_en: 'Check & Polishing Cutting Trim Lower', description_id: 'Check & Polishing Cutting Trim Lower' },
+    ],
+};
+
+export const getFourLotChecklistItems = (processType) => {
+    return FOUR_LOT_CHECK_CHECKLIST_ITEMS[processType] || [];
+};
+
+export const getChecklistItems = (processType, options = {}) => {
+    const shouldUseFourLotChecklist =
+        Boolean(options?.is4LotCheck || options?.maintenanceType === '4lc_maintenance') &&
+        FOUR_LOT_CHECK_PROCESS_TYPES.includes(processType);
+
+    if (shouldUseFourLotChecklist) {
+        return getFourLotChecklistItems(processType);
+    }
+
     return CHECKLIST_ITEMS[processType] || [];
 };
 
@@ -126,8 +151,8 @@ export const getProcessTypeLabel = (processType) => {
     return found ? found.label : processType?.toUpperCase() || '-';
 };
 
-export const initializeChecklistResults = (processType) => {
-    const items = getChecklistItems(processType);
+export const initializeChecklistResults = (processType, options = {}) => {
+    const items = getChecklistItems(processType, options);
     return items.map(item => ({
         item_no: item.no,
         description: item.description_en,

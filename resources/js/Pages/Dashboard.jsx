@@ -15,6 +15,7 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
     const totalDies = stats?. total || 0;
     const okDies = stats?.ok || 0;
     const healthPercentage = totalDies > 0 ? Math.round((okDies / totalDies) * 100) : 0;
+    const canSee4LotCheck = ['admin', 'mtn_dies', 'production', 'ppic'].includes(auth?.user?.role);
 
     const groupColors = {
         A1: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', badge: 'bg-green-100 text-green-800' },
@@ -37,7 +38,7 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
             <div className="py-6 px-6 space-y-6">
 
                 {/* Row 1: Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-2 ${canSee4LotCheck ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4`}>
                     <StatsCard
                         title="Total Part Number"
                         value={stats?.total || 0}
@@ -68,6 +69,16 @@ export default function Dashboard({ auth, stats, diesByTonnage, criticalDies, up
                         subtitle="Need PPM now!"
                         href={route('dies.index', { status: 'red' })}
                     />
+                    {canSee4LotCheck && (
+                        <StatsCard
+                            title="4 Lot Check"
+                            value={stats?.dies_4lot_check || 0}
+                            icon="fa-layer-group"
+                            color="indigo"
+                            subtitle="4 LC Maintenance"
+                            href={route('dies.index', { is_4lot_check: 1 })}
+                        />
+                    )}
                 </div>
 
                 {/* Row 2: Charts - Status Distribution & Dies by Tonnage */}

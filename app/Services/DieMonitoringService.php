@@ -23,15 +23,46 @@ class DieMonitoringService
     {
         $die->loadMissing(['customer', 'machineModel']);
 
+        $is4LotWorkflowAlert = (bool) $die->is_4lot_check
+            && in_array($event, ['ppm_scheduled', 'schedule_approved'], true);
+
+        if ($is4LotWorkflowAlert) {
+            $this->send4LotWorkflowNotification($die, $event, $actor, $extra);
+            return;
+        }
+
+        $targetRoles = [
+            User::ROLE_ADMIN,
+            User::ROLE_MTN_DIES,
+            User::ROLE_MGR_GM,
+            User::ROLE_MD,
+            User::ROLE_PPIC,
+            User::ROLE_PRODUCTION,
+        ];
+
         $recipients = User::where('is_active', true)
-            ->whereIn('role', [
-                User::ROLE_ADMIN,
-                User::ROLE_MTN_DIES,
-                User::ROLE_MGR_GM,
-                User::ROLE_MD,
-                User::ROLE_PPIC,
-                User::ROLE_PRODUCTION,
-            ])
+            ->whereIn('role', $targetRoles)
+            ->get();
+
+        if ($recipients->isNotEmpty()) {
+            Notification::send($recipients, new PpmWorkflowNotification($die, $event, $actor, $extra));
+        }
+    }
+
+    /**
+     * Send workflow notification specifically for 4-lot-check dies.
+     */
+    protected function send4LotWorkflowNotification(DieModel $die, string $event, ?string $actor = null, array $extra = []): void
+    {
+        $targetRoles = [
+            User::ROLE_ADMIN,
+            User::ROLE_MTN_DIES,
+            User::ROLE_PPIC,
+            User::ROLE_PRODUCTION,
+        ];
+
+        $recipients = User::where('is_active', true)
+            ->whereIn('role', $targetRoles)
             ->get();
 
         if ($recipients->isNotEmpty()) {
@@ -147,6 +178,11 @@ class DieMonitoringService
             $query->where('line', $filters['line']);
         }
 
+        // Filter 4-lot check flag
+        if (array_key_exists('is_4lot_check', $filters) && $filters['is_4lot_check'] !== null && $filters['is_4lot_check'] !== '') {
+            $query->where('is_4lot_check', (int) $filters['is_4lot_check']);
+        }
+
         // Search by part number or name
         if (!empty($filters['search'])) {
             $search = $filters['search'];
@@ -161,15 +197,17 @@ class DieMonitoringService
         // Filter for dies that already have completed PPM history.
         // Source of truth: ppm_histories.status = 'done'.
         if (!empty($filters['status']) && $filters['status'] === 'ppm') {
-            $query->whereHas('ppmHistories', function ($ppmQuery) use ($filters) {
-                $ppmQuery->where('status', 'done');
-
-                if (!empty($filters['ppm_done_date'])) {
+            $donePpmDieIds = PpmHistory::query()
+                ->select('die_id')
+                ->where('status', 'done')
+                ->when(!empty($filters['ppm_done_date']), function ($ppmQuery) use ($filters) {
                     $ppmQuery->whereDate('ppm_date', $filters['ppm_done_date']);
-                }
-            });
+                })
+                ->distinct();
 
-            return $query->paginate($perPage);
+            $query->whereIn('id', $donePpmDieIds);
+
+            return $query->paginate($perPage)->withQueryString();
         }
 
         // Status (green/orange/red) is a computed attribute — must filter in PHP then manually paginate
@@ -333,6 +371,104 @@ class DieMonitoringService
     }
 
     /**
+     * Record 4LC maintenance and update tracking
+     * Uses a separate 4LC status flow
+     */
+    public function record4lcMaintenance(DieModel $die, array $data): PpmHistory
+    {
+        return DB::transaction(function () use ($die, $data) {
+            $currentAccumulation = $die->accumulation_stroke;
+            $ppmCount = ($die->ppm_count ?? 0) + 1;
+
+            $history = PpmHistory::create([
+                'die_id' => $die->id,
+                'ppm_date' => $data['ppm_date'],
+                'stroke_at_ppm' => $currentAccumulation,
+                'ppm_number' => $ppmCount,
+                'process_type' => $data['process_type'] ?? $die->process_type,
+                'checklist_results' => $data['checklist_results'] ?? null,
+                'pic' => $data['pic'],
+                'status' => 'done',
+                'maintenance_type' => $data['maintenance_type'] ?? '4lc_maintenance',
+                'work_performed' => $data['work_performed'] ?? null,
+                'parts_replaced' => $data['parts_replaced'] ?? null,
+                'findings' => $data['findings'] ?? null,
+                'recommendations' => $data['recommendations'] ?? null,
+                'checked_by' => $data['checked_by'] ?? null,
+                'approved_by' => $data['approved_by'] ?? null,
+                'created_by' => auth()->id(),
+            ]);
+
+            $updateData = [
+                'ppm_count' => $ppmCount,
+                'stroke_at_last_ppm' => 0,
+                'last_ppm_date' => $data['ppm_date'],
+                'ppm_alert_status' => '4lc_completed',
+                'ppm_finished_at' => now(),
+                'ppm_total_days' => $die->red_alerted_at
+                    ? (int) $die->red_alerted_at->diffInWeekdays(now())
+                    : null,
+            ];
+
+            $die->update($updateData);
+
+            if ($die->group_name) {
+                $eligibleStatuses = [
+                    'transferred_to_mtn_4lc',
+                    '4lc_in_progress',
+                    'additional_repair',
+                ];
+
+                $groupMembers = DieModel::where('group_name', $die->group_name)
+                    ->where('id', '!=', $die->id)
+                    ->whereIn('ppm_alert_status', $eligibleStatuses)
+                    ->get();
+
+                foreach ($groupMembers as $member) {
+                    $memberPpmCount = ($member->ppm_count ?? 0) + 1;
+
+                    PpmHistory::create([
+                        'die_id' => $member->id,
+                        'ppm_date' => $data['ppm_date'],
+                        'stroke_at_ppm' => $member->accumulation_stroke,
+                        'ppm_number' => $memberPpmCount,
+                        'process_type' => $data['process_type'] ?? $member->process_type,
+                        'checklist_results' => $data['checklist_results'] ?? null,
+                        'pic' => $data['pic'],
+                        'status' => 'done',
+                        'maintenance_type' => $data['maintenance_type'] ?? '4lc_maintenance',
+                        'work_performed' => $data['work_performed'] ?? null,
+                        'parts_replaced' => $data['parts_replaced'] ?? null,
+                        'findings' => $data['findings'] ?? null,
+                        'recommendations' => $data['recommendations'] ?? null,
+                        'checked_by' => $data['checked_by'] ?? null,
+                        'approved_by' => $data['approved_by'] ?? null,
+                        'created_by' => auth()->id(),
+                    ]);
+
+                    $member->update([
+                        'ppm_count' => $memberPpmCount,
+                        'stroke_at_last_ppm' => 0,
+                        'last_ppm_date' => $data['ppm_date'],
+                        'ppm_alert_status' => '4lc_completed',
+                        'ppm_finished_at' => now(),
+                        'ppm_total_days' => $member->red_alerted_at
+                            ? (int) $member->red_alerted_at->diffInWeekdays(now())
+                            : null,
+                    ]);
+
+                    $this->transferBackToProduction($member);
+                }
+            }
+
+            $this->sendWorkflowNotification($die, '4lc_completed');
+            $this->transferBackToProduction($die);
+
+            return $history;
+        });
+    }
+
+    /**
      * Send notification when PPM is completed
      */
     protected function sendPpmCompletedNotification(DieModel $die, PpmHistory $history): void
@@ -364,8 +500,10 @@ class DieMonitoringService
      */
     public function schedulePpm(DieModel $die, array $data): void
     {
+        $scheduleAlertStatus = $data['alert_status'] ?? 'ppm_scheduled';
+
         $scheduleData = [
-            'ppm_alert_status' => 'ppm_scheduled',
+            'ppm_alert_status' => $scheduleAlertStatus,
             'ppm_scheduled_date' => $data['scheduled_date'] ?? null,
             'ppm_scheduled_by' => $data['pic'] ?? auth()->user()?->name,
         ];
@@ -454,9 +592,12 @@ class DieMonitoringService
             // Statuses that are already more advanced — don't downgrade
             $advancedStatuses = [
                 'transferred_to_mtn',
+                'transferred_to_mtn_4lc',
                 'ppm_in_progress',
+                '4lc_in_progress',
                 'additional_repair',
                 'ppm_completed',
+                '4lc_completed',
             ];
 
             $groupMembers = DieModel::where('group_name', $die->group_name)
@@ -486,6 +627,77 @@ class DieMonitoringService
     }
 
     /**
+     * PPIC: Approve 4 Lot Check Schedule
+     * Flow: MTN DIES creates 4LC schedule → PPIC confirms it
+     */
+    public function approve4LotCheckSchedule(DieModel $die, array $data = []): void
+    {
+        if (!$die->is_4lot_check) {
+            return;
+        }
+
+        $updateData = [
+            'ppm_alert_status' => '4lc_approved',
+            'schedule_approved_at' => now(),
+            'schedule_approved_by' => auth()->user()?->name,
+        ];
+
+        if (!$die->ppm_scheduled_date) {
+            $latestSchedule = $die->ppmSchedules()
+                ->where(function ($q) {
+                    $q->whereNotNull('plan_week')
+                        ->orWhereNotNull('ppm_date');
+                })
+                ->orderByDesc('year')
+                ->orderByDesc('month')
+                ->orderByDesc('week')
+                ->first();
+
+            if ($latestSchedule?->ppm_date) {
+                $updateData['ppm_scheduled_date'] = $latestSchedule->ppm_date;
+                $scheduledBy = $latestSchedule->updated_by ?? $latestSchedule->pic;
+                if ($scheduledBy) {
+                    $updateData['ppm_scheduled_by'] = $scheduledBy;
+                }
+            }
+        }
+
+        $die->update($updateData);
+
+        if ($die->group_name) {
+            $advancedStatuses = [
+                'transferred_to_mtn',
+                'ppm_in_progress',
+                'additional_repair',
+                'ppm_completed',
+            ];
+
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->where('is_4lot_check', true)
+                ->whereNotIn('ppm_alert_status', $advancedStatuses)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $memberUpdateData = [
+                    'ppm_alert_status' => '4lc_approved',
+                    'schedule_approved_at' => now(),
+                    'schedule_approved_by' => auth()->user()?->name,
+                ];
+
+                if (!$member->ppm_scheduled_date && $die->ppm_scheduled_date) {
+                    $memberUpdateData['ppm_scheduled_date'] = $die->ppm_scheduled_date;
+                    $memberUpdateData['ppm_scheduled_by'] = $die->ppm_scheduled_by;
+                }
+
+                $member->update($memberUpdateData);
+            }
+        }
+
+        $this->sendWorkflowNotification($die, 'schedule_approved');
+    }
+
+    /**
      * Mark die as PPM in progress
      * PPM activity starts (max n+1 from transfer, n+3 total from RED)
      * Now supports multi-process initialization
@@ -499,7 +711,7 @@ class DieMonitoringService
 
         // Initialize die processes if process types provided
         if (!empty($processTypes)) {
-            $this->initializeDieProcesses($die, $processTypes);
+            $this->initializeDieProcesses($die, $processTypes, 'ppm');
         }
 
         // Sync PPM processing to all dies with the same group_name
@@ -523,13 +735,53 @@ class DieMonitoringService
 
                 // Initialize same processes for group members if provided
                 if (!empty($processTypes)) {
-                    $this->initializeDieProcesses($member, $processTypes);
+                    $this->initializeDieProcesses($member, $processTypes, 'ppm');
                 }
             }
         }
 
         // Send notification
         $this->sendWorkflowNotification($die, 'ppm_in_progress');
+    }
+
+    /**
+     * Start 4LC processing flow
+     */
+    public function start4lcProcessing(DieModel $die, array $processTypes = []): void
+    {
+        $die->update([
+            'ppm_alert_status' => '4lc_in_progress',
+            'ppm_started_at' => now(),
+        ]);
+
+        if (!empty($processTypes)) {
+            $this->initializeDieProcesses($die, $processTypes, 'lot_check');
+        }
+
+        if ($die->group_name) {
+            $eligibleStatuses = [
+                '4lc_approved',
+                'transferred_to_mtn_4lc',
+            ];
+
+            $groupMembers = DieModel::where('group_name', $die->group_name)
+                ->where('id', '!=', $die->id)
+                ->whereIn('ppm_alert_status', $eligibleStatuses)
+                ->get();
+
+            foreach ($groupMembers as $member) {
+                $member->update([
+                    'ppm_alert_status' => '4lc_in_progress',
+                    'ppm_started_at' => now(),
+                ]);
+
+                if (!empty($processTypes)) {
+                    $this->initializeDieProcesses($member, $processTypes, 'lot_check');
+                }
+            }
+        }
+
+        $this->sendWorkflowNotification($die, '4lc_in_progress');
     }
 
     /**
@@ -542,10 +794,15 @@ class DieMonitoringService
     {
         $advancedStatuses = [
             'ppm_scheduled',
+            '4lc_scheduled',
+            '4lc_approved',
             'schedule_approved',
+            'transferred_to_mtn_4lc',
             'ppm_in_progress',
+            '4lc_in_progress',
             'additional_repair',
             'ppm_completed',
+            '4lc_completed',
         ];
 
         $updateData = [
@@ -593,13 +850,17 @@ class DieMonitoringService
      */
     public function transferDiesToMtn(DieModel $die, array $data): void
     {
+        $transferStatus = $die->is_4lot_check
+            ? 'transferred_to_mtn_4lc'
+            : 'transferred_to_mtn';
+
         $die->update([
             'transfer_from_location' => $die->location ?? $data['from_location'] ?? 'Production',
             'transfer_to_location' => $data['to_location'] ?? 'MTN Dies',
             'transferred_by' => $data['transferred_by'] ?? auth()->user()?->name,
             'transferred_at' => now(),
             'location' => $data['to_location'] ?? 'MTN Dies',
-            'ppm_alert_status' => 'transferred_to_mtn',
+            'ppm_alert_status' => $transferStatus,
         ]);
 
         // Sync transfer to all dies with the same group_name
@@ -609,6 +870,8 @@ class DieMonitoringService
                 'red_alerted',
                 'lot_date_set',
                 'ppm_scheduled',
+                '4lc_scheduled',
+                '4lc_approved',
                 'schedule_approved',
             ];
 
@@ -618,19 +881,23 @@ class DieMonitoringService
                 ->get();
 
             foreach ($groupMembers as $member) {
+                $memberTransferStatus = $member->is_4lot_check
+                    ? 'transferred_to_mtn_4lc'
+                    : 'transferred_to_mtn';
+
                 $member->update([
                     'transfer_from_location' => $member->location ?? $data['from_location'] ?? 'Production',
                     'transfer_to_location' => $data['to_location'] ?? 'MTN Dies',
                     'transferred_by' => $data['transferred_by'] ?? auth()->user()?->name,
                     'transferred_at' => now(),
                     'location' => $data['to_location'] ?? 'MTN Dies',
-                    'ppm_alert_status' => 'transferred_to_mtn',
+                    'ppm_alert_status' => $memberTransferStatus,
                 ]);
             }
         }
 
         // Send notification
-        $this->sendWorkflowNotification($die, 'transferred_to_mtn', $data['transferred_by'] ?? null);
+        $this->sendWorkflowNotification($die, $transferStatus, $data['transferred_by'] ?? null);
     }
 
     /**
@@ -668,8 +935,11 @@ class DieMonitoringService
         if ($die->group_name) {
             $eligibleStatuses = [
                 'ppm_completed',
+                '4lc_completed',
                 'transferred_to_mtn',
+                'transferred_to_mtn_4lc',
                 'ppm_in_progress',
+                '4lc_in_progress',
                 'additional_repair',
             ];
 
@@ -721,7 +991,7 @@ class DieMonitoringService
         if ($die->group_name) {
             DieModel::where('group_name', $die->group_name)
                 ->where('id', '!=', $die->id)
-                ->where('ppm_alert_status', 'ppm_in_progress')
+                ->whereIn('ppm_alert_status', ['ppm_in_progress', '4lc_in_progress'])
                 ->update(['ppm_alert_status' => 'additional_repair']);
         }
 
@@ -735,8 +1005,9 @@ class DieMonitoringService
      */
     public function resumePpmAfterRepair(DieModel $die): void
     {
+        $resumeStatus = $die->is_4lot_check ? '4lc_in_progress' : 'ppm_in_progress';
         $die->update([
-            'ppm_alert_status' => 'ppm_in_progress',
+            'ppm_alert_status' => $resumeStatus,
         ]);
     }
 
@@ -855,22 +1126,34 @@ class DieMonitoringService
             'schedule_approved',
             'red_alerted',
             'transferred_to_mtn',
+            'transferred_to_mtn_4lc',
             'ppm_in_progress',
+            '4lc_in_progress',
             'additional_repair',
             'ppm_completed',
+            '4lc_completed',
         ];
 
         if ($newStatus === 'orange') {
-            // Send Orange Alert to all relevant users
-            $recipients = User::where('is_active', true)
-                ->whereIn('role', [
+            // Send Orange Alert
+            $is4LotAlert = (bool) $die->is_4lot_check;
+            $targetRoles = $is4LotAlert
+                ? [
+                    User::ROLE_ADMIN,
+                    User::ROLE_MTN_DIES,
+                    User::ROLE_PRODUCTION,
+                ]
+                : [
                     User::ROLE_ADMIN,
                     User::ROLE_MTN_DIES,
                     User::ROLE_MGR_GM,
                     User::ROLE_MD,
                     User::ROLE_PPIC,
                     User::ROLE_PRODUCTION,
-                ])
+                ];
+
+            $recipients = User::where('is_active', true)
+                ->whereIn('role', $targetRoles)
                 ->get();
 
             if ($recipients->isNotEmpty()) {
@@ -886,16 +1169,25 @@ class DieMonitoringService
             cache()->put("ppm_orange_alert_{$die->id}_" . now()->format('Y-m-d'), true, now()->endOfDay());
 
         } elseif ($newStatus === 'red') {
-            // Send Red Alert to all relevant users
-            $recipients = User::where('is_active', true)
-                ->whereIn('role', [
+            // Send Red Alert
+            $is4LotAlert = (bool) $die->is_4lot_check;
+            $targetRoles = $is4LotAlert
+                ? [
+                    User::ROLE_ADMIN,
+                    User::ROLE_MTN_DIES,
+                    User::ROLE_PRODUCTION,
+                ]
+                : [
                     User::ROLE_ADMIN,
                     User::ROLE_MTN_DIES,
                     User::ROLE_MGR_GM,
                     User::ROLE_MD,
                     User::ROLE_PPIC,
                     User::ROLE_PRODUCTION,
-                ])
+                ];
+
+            $recipients = User::where('is_active', true)
+                ->whereIn('role', $targetRoles)
                 ->get();
 
             if ($recipients->isNotEmpty()) {
@@ -903,7 +1195,7 @@ class DieMonitoringService
             }
 
             // Update ppm_alert_status to red_alerted
-            if (!in_array($die->ppm_alert_status, ['red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'])) {
+            if (!in_array($die->ppm_alert_status, ['red_alerted', 'transferred_to_mtn', 'transferred_to_mtn_4lc', 'ppm_in_progress', '4lc_in_progress', 'additional_repair', 'ppm_completed', '4lc_completed'])) {
                 $die->update([
                     'ppm_alert_status' => 'red_alerted',
                     'red_alerted_at' => now(),
@@ -924,10 +1216,13 @@ class DieMonitoringService
      * @param DieModel $die
      * @param array $processTypes Array of process_type values selected via checkboxes
      */
-    public function initializeDieProcesses(DieModel $die, array $processTypes): void
+    public function initializeDieProcesses(DieModel $die, array $processTypes, string $flow = 'ppm'): void
     {
+        $isLotCheck = $flow === 'lot_check';
+
         // Clear any existing pending processes from previous cycle
-        $die->dieProcesses()->where('ppm_status', '!=', 'completed')->delete();
+        $statusColumn = $isLotCheck ? 'lot_check_status' : 'ppm_status';
+        $die->dieProcesses()->where($statusColumn, '!=', 'completed')->delete();
 
         foreach ($processTypes as $order => $processType) {
             DieProcess::updateOrCreate(
@@ -937,11 +1232,16 @@ class DieMonitoringService
                     'process_order' => $order + 1,
                 ],
                 [
-                    'ppm_status' => 'pending',
-                    'ppm_started_at' => null,
-                    'ppm_completed_at' => null,
-                    'ppm_history_id' => null,
-                    'completed_by' => null,
+                    'ppm_status' => $isLotCheck ? 'pending' : 'pending',
+                    'ppm_started_at' => $isLotCheck ? null : null,
+                    'ppm_completed_at' => $isLotCheck ? null : null,
+                    'ppm_history_id' => $isLotCheck ? null : null,
+                    'completed_by' => $isLotCheck ? null : null,
+                    'lot_check_status' => $isLotCheck ? 'pending' : 'pending',
+                    'lot_check_started_at' => $isLotCheck ? null : null,
+                    'lot_check_completed_at' => $isLotCheck ? null : null,
+                    'lot_check_history_id' => $isLotCheck ? null : null,
+                    'lot_check_completed_by' => $isLotCheck ? null : null,
                 ]
             );
         }
@@ -956,6 +1256,7 @@ class DieMonitoringService
         return DB::transaction(function () use ($process, $data) {
             $die = $process->die;
             $die->load(['machineModel.tonnageStandard', 'customer']);
+            $isLotCheck = $die->is_4lot_check;
 
             // Record individual process PPM history
             $ppmCount = ($die->ppm_count ?? 0) + 1;
@@ -979,7 +1280,12 @@ class DieMonitoringService
             ]);
 
             // Mark process as completed
-            $process->update([
+            $process->update($isLotCheck ? [
+                'lot_check_status' => 'completed',
+                'lot_check_completed_at' => now(),
+                'lot_check_history_id' => $history->id,
+                'lot_check_completed_by' => $data['pic'],
+            ] : [
                 'ppm_status' => 'completed',
                 'ppm_completed_at' => now(),
                 'ppm_history_id' => $history->id,
@@ -990,14 +1296,14 @@ class DieMonitoringService
             if ($die->group_name) {
                 $groupMembers = DieModel::where('group_name', $die->group_name)
                     ->where('id', '!=', $die->id)
-                    ->whereIn('ppm_alert_status', ['ppm_in_progress', 'additional_repair'])
+                    ->whereIn('ppm_alert_status', $isLotCheck ? ['4lc_in_progress', 'additional_repair'] : ['ppm_in_progress', 'additional_repair'])
                     ->get();
 
                 foreach ($groupMembers as $member) {
                     $memberProcess = $member->dieProcesses()
                         ->where('process_type', $process->process_type)
                         ->where('process_order', $process->process_order)
-                        ->whereIn('ppm_status', ['pending', 'in_progress'])
+                        ->whereIn($isLotCheck ? 'lot_check_status' : 'ppm_status', ['pending', 'in_progress'])
                         ->first();
 
                     if ($memberProcess) {
@@ -1025,7 +1331,12 @@ class DieMonitoringService
                         ]);
 
                         // Mark member process as completed
-                        $memberProcess->update([
+                        $memberProcess->update($isLotCheck ? [
+                            'lot_check_status' => 'completed',
+                            'lot_check_completed_at' => now(),
+                            'lot_check_history_id' => $memberHistory->id,
+                            'lot_check_completed_by' => $data['pic'],
+                        ] : [
                             'ppm_status' => 'completed',
                             'ppm_completed_at' => now(),
                             'ppm_history_id' => $memberHistory->id,
@@ -1034,23 +1345,32 @@ class DieMonitoringService
 
                         // Check if ALL processes for this member are now completed
                         $member->refresh();
-                        $memberProgress = $member->ppm_process_progress;
+                        $memberProgress = $isLotCheck ? $member->lot_check_progress : $member->ppm_process_progress;
 
                         if ($memberProgress['all_completed']) {
-                            $member->update([
+                            $memberUpdateData = [
                                 'ppm_count' => $memberPpmCount,
                                 'stroke_at_last_ppm' => 0,
                                 'last_ppm_date' => $data['ppm_date'],
-                                'ppm_alert_status' => 'ppm_completed',
+                                'ppm_alert_status' => $isLotCheck ? '4lc_completed' : 'ppm_completed',
                                 'ppm_finished_at' => now(),
                                 'ppm_total_days' => $member->red_alerted_at
                                     ? (int) $member->red_alerted_at->diffInWeekdays(now())
                                     : null,
-                                'accumulation_stroke' => 0,
-                                'last_stroke' => 0,
-                            ]);
+                            ];
 
-                            $this->sendPpmCompletedNotification($member, $memberHistory);
+                            if (!$isLotCheck) {
+                                $memberUpdateData['accumulation_stroke'] = 0;
+                                $memberUpdateData['last_stroke'] = 0;
+                            }
+
+                            $member->update($memberUpdateData);
+
+                            if ($isLotCheck) {
+                                $this->sendWorkflowNotification($member, '4lc_completed');
+                            } else {
+                                $this->sendPpmCompletedNotification($member, $memberHistory);
+                            }
                             $this->transferBackToProduction($member);
                         }
                     }
@@ -1059,24 +1379,33 @@ class DieMonitoringService
 
             // Check if ALL processes for this die are now completed
             $die->refresh();
-            $progress = $die->ppm_process_progress;
+            $progress = $isLotCheck ? $die->lot_check_progress : $die->ppm_process_progress;
 
             if ($progress['all_completed']) {
-                // All processes done - complete the full PPM cycle
-                $die->update([
+                // All processes done - complete the full cycle
+                $dieUpdateData = [
                     'ppm_count' => $ppmCount,
                     'stroke_at_last_ppm' => 0,
                     'last_ppm_date' => $data['ppm_date'],
-                    'ppm_alert_status' => 'ppm_completed',
+                    'ppm_alert_status' => $isLotCheck ? '4lc_completed' : 'ppm_completed',
                     'ppm_finished_at' => now(),
                     'ppm_total_days' => $die->red_alerted_at
                         ? (int) $die->red_alerted_at->diffInWeekdays(now())
                         : null,
-                    'accumulation_stroke' => 0,
-                    'last_stroke' => 0,
-                ]);
+                ];
 
-                $this->sendPpmCompletedNotification($die, $history);
+                if (!$isLotCheck) {
+                    $dieUpdateData['accumulation_stroke'] = 0;
+                    $dieUpdateData['last_stroke'] = 0;
+                }
+
+                $die->update($dieUpdateData);
+
+                if ($isLotCheck) {
+                    $this->sendWorkflowNotification($die, '4lc_completed');
+                } else {
+                    $this->sendPpmCompletedNotification($die, $history);
+                }
                 $this->transferBackToProduction($die);
             } else {
                 // Partial completion - send workflow notification
@@ -1096,30 +1425,37 @@ class DieMonitoringService
      */
     public function startProcess(DieProcess $process): void
     {
-        $process->update([
+        $die = $process->die;
+        $isLotCheck = $die->is_4lot_check;
+
+        $process->update($isLotCheck ? [
+            'lot_check_status' => 'in_progress',
+            'lot_check_started_at' => now(),
+        ] : [
             'ppm_status' => 'in_progress',
             'ppm_started_at' => now(),
         ]);
-
-        $die = $process->die;
         $die->loadMissing(['customer', 'machineModel']);
 
         // Sync process start to all dies with the same group_name
         if ($die->group_name) {
             $groupMembers = DieModel::where('group_name', $die->group_name)
                 ->where('id', '!=', $die->id)
-                ->whereIn('ppm_alert_status', ['ppm_in_progress', 'additional_repair'])
+                ->whereIn('ppm_alert_status', $isLotCheck ? ['4lc_in_progress', 'additional_repair'] : ['ppm_in_progress', 'additional_repair'])
                 ->get();
 
             foreach ($groupMembers as $member) {
                 $memberProcess = $member->dieProcesses()
                     ->where('process_type', $process->process_type)
                     ->where('process_order', $process->process_order)
-                    ->where('ppm_status', 'pending')
+                    ->where($isLotCheck ? 'lot_check_status' : 'ppm_status', 'pending')
                     ->first();
 
                 if ($memberProcess) {
-                    $memberProcess->update([
+                    $memberProcess->update($isLotCheck ? [
+                        'lot_check_status' => 'in_progress',
+                        'lot_check_started_at' => now(),
+                    ] : [
                         'ppm_status' => 'in_progress',
                         'ppm_started_at' => now(),
                     ]);

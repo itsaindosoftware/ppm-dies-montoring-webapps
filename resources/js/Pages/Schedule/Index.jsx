@@ -10,7 +10,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     const [tonnageId, setTonnageId] = useState(filters?.tonnage_id || '');
     const [editingCell, setEditingCell] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
-    const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' | 'needs_schedule' | 'already_scheduled' | 'status_scheduled'
+    const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' | 'needs_schedule' | 'already_scheduled' | 'status_scheduled' | 'lot4_check'
     const tableRef = useRef(null);
 
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
@@ -45,6 +45,40 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     };
 
     const isDoneTabActive = scheduleFilter === 'status_scheduled';
+    const is4LotCheckTabActive = scheduleFilter === 'lot4_check';
+
+    const formatYmdToDm = (value) => {
+        if (!value) {
+            return '-';
+        }
+
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        return `${day}/${month}`;
+    };
+
+    const getPpmSequenceByCell = (die) => {
+        const sequenceMap = {};
+        let sequence = 0;
+
+        for (let monthIdx = 0; monthIdx < months.length; monthIdx++) {
+            for (let weekIdx = 0; weekIdx < weeks.length; weekIdx++) {
+                const status = die.monthly_data?.[monthIdx + 1]?.status?.[weekIdx];
+
+                if (status === 'Done') {
+                    sequence += 1;
+                    sequenceMap[`${monthIdx}-${weekIdx}`] = sequence;
+                }
+            }
+        }
+
+        return sequenceMap;
+    };
 
     const shouldShowDoneCell = (die, monthIdx, weekIdx) => {
         if (!isDoneTabActive) {
@@ -78,8 +112,12 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
         sum + (g.dies?.filter(d => hasDoneStatus(d)).length || 0), 0
     ) || 0;
 
-    const hasVisibleScheduleFilters = alreadyScheduledCount > 0 || statusScheduledCount > 0 || (isMtnDies && needsScheduleCount > 0);
-    const summaryGridCols = isMtnDies ? 'grid-cols-7' : canUseScheduleStatusFilters ? 'grid-cols-6' : 'grid-cols-4';
+    const lot4CheckCount = scheduleData?.reduce((sum, g) =>
+        sum + (g.dies?.filter(d => Number(d.is_4lot_check) === 1).length || 0), 0
+    ) || 0;
+
+    const hasVisibleScheduleFilters = alreadyScheduledCount > 0 || statusScheduledCount > 0 || lot4CheckCount > 0 || (isMtnDies && needsScheduleCount > 0);
+    const summaryGridCols = isMtnDies ? 'grid-cols-8' : canUseScheduleStatusFilters ? 'grid-cols-7' : 'grid-cols-4';
 
     // Filter schedule data based on active filter
     const filteredScheduleData = scheduleFilter === 'all'
@@ -90,6 +128,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                 scheduleFilter === 'needs_schedule' ? d.needs_scheduling
                 : scheduleFilter === 'already_scheduled' ? hasOnlyScheduledInStatus(d)
                 : scheduleFilter === 'status_scheduled' ? hasDoneStatus(d)
+                : scheduleFilter === 'lot4_check' ? Number(d.is_4lot_check) === 1
                 : true
             ) || [],
         })).filter(group => group.dies.length > 0);
@@ -182,6 +221,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             case 'plan': return 'Plan Week (1-4)';
             case 'stroke': return 'Accumulation Stroke At PPM';
             case 'ppm_date': return 'PPM Date';
+            case 'lot4_check_date': return '4 Lot Check Date';
             case 'pic': return 'PIC (Person In Charge)';
             default: return field;
         }
@@ -194,6 +234,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
             case 'plan':
                 return 'number';
             case 'ppm_date':
+            case 'lot4_check_date':
                 return 'date';
             default:
                 return 'text';
@@ -201,7 +242,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     };
 
     const renderEditableCell = (die, monthIdx, weekIdx, field, value, displayValue) => {
-        const isEditable = canEditSchedule && ['forecast', 'plan', 'stroke', 'ppm_date', 'pic'].includes(field);
+        const isEditable = canEditSchedule && ['forecast', 'plan', 'stroke', 'ppm_date', 'lot4_check_date', 'pic'].includes(field);
 
         return (
             <td
@@ -409,13 +450,28 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                     📌 Done PPM ({statusScheduledCount})
                                 </button>
                             )}
+                            {lot4CheckCount > 0 && (
+                                <button
+                                    onClick={() => setScheduleFilter(scheduleFilter === 'lot4_check' ? 'all' : 'lot4_check')}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                                        scheduleFilter === 'lot4_check'
+                                            ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-300'
+                                            : 'bg-indigo-50 text-indigo-800 border border-indigo-300 hover:bg-indigo-100'
+                                    }`}
+                                >
+                                    <i className="fas fa-layer-group"></i>
+                                    <span>4 Lot Check ({lot4CheckCount})</span>
+                                </button>
+                            )}
                             {scheduleFilter !== 'all' && (
                                 <span className="text-xs text-gray-500 ml-2">
                                     {scheduleFilter === 'needs_schedule'
                                         ? 'Showing dies that have a LOT date but have not been scheduled for PPM yet'
                                         : scheduleFilter === 'already_scheduled'
                                             ? 'Showing dies that currently have PPM status Scheduled In'
-                                            : 'Showing only Done PPM cells (Scheduled In is hidden)'
+                                            : scheduleFilter === 'lot4_check'
+                                                ? 'Showing only dies marked as 4 Lot Check'
+                                                : 'Showing only Done PPM cells (Scheduled In is hidden)'
                                     }
                                 </span>
                             )}
@@ -426,7 +482,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                     {canEditSchedule && (
                         <div className="mt-3 text-xs text-gray-500 flex items-center gap-1">
                             <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">💡 Tip:</span>
-                            <span>Click on Stroke, PPM Date, or PIC cells to edit them</span>
+                            <span>Click on Stroke, PPM Date, 4 Lot Check Date, or PIC cells to edit them</span>
                         </div>
                     )}
                 </div>
@@ -486,9 +542,15 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                             {/* Dies in Group */}
                                             {group.dies?. map((die, dieIndex) => (
                                                 <React.Fragment key={`die-${die.id}`}>
+                                                    {(() => {
+                                                        const rowSpan = is4LotCheckTabActive ? 6 : 4;
+                                                        const ppmSequenceByCell = getPpmSequenceByCell(die);
+
+                                                        return (
+                                                        <>
                                                     {/* Row 1: Part Number + PPM Date */}
                                                     <tr key={`${die.id}-1`} className={`border-t-2 border-gray-300 hover:bg-gray-50 ${die.needs_scheduling ? 'bg-amber-50/60' : ''}`}>
-                                                        <td className={`border px-2 py-1 text-center font-medium sticky left-0 z-10 ${die.needs_scheduling ? 'bg-amber-50 border-l-4 border-l-amber-400' : 'bg-gray-50'}`} rowSpan={4}>
+                                                        <td className={`border px-2 py-1 text-center font-medium sticky left-0 z-10 ${die.needs_scheduling ? 'bg-amber-50 border-l-4 border-l-amber-400' : 'bg-gray-50'}`} rowSpan={rowSpan}>
                                                             {groupIndex * 100 + dieIndex + 1}
                                                         </td>
                                                         <td className={`border px-2 py-1 sticky left-[40px] z-10 ${die.needs_scheduling ? 'bg-amber-50' : 'bg-white'}`}>
@@ -503,17 +565,17 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={4}>
+                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={rowSpan}>
                                                             {die.model}
                                                         </td>
-                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={4}>
+                                                        <td className="border px-2 py-1 text-center bg-gray-50" rowSpan={rowSpan}>
                                                             {die.total_die}
                                                         </td>
                                                         <td className="border px-2 py-1 text-xs text-gray-600">
                                                             ACCUMULATION STROKE
                                                         </td>
                                                         {/* PPM Condition Column */}
-                                                        <td className="border px-1 py-1 bg-gray-50" rowSpan={4}>
+                                                        <td className="border px-1 py-1 bg-gray-50" rowSpan={rowSpan}>
                                                             <div className="space-y-1">
                                                                 {/* Condition 1 */}
                                                                 <div className={`flex items-center gap-1 text-[10px] ${
@@ -696,6 +758,66 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                         ))}
                                                     </tr>
 
+                                                    {is4LotCheckTabActive && (
+                                                        <tr key={`${die.id}-5`} className="hover:bg-indigo-50/40">
+                                                            <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
+                                                            <td className="border px-2 py-1 text-xs text-indigo-700 font-semibold">
+                                                                4 LOT CHECK
+                                                            </td>
+                                                            <td className="border px-2 py-1 text-center text-xs font-medium text-indigo-700">
+                                                                {die.done_history_dates?.length
+                                                                    ? die.done_history_dates.map(formatYmdToDm).join(', ')
+                                                                    : '-'}
+                                                            </td>
+                                                            <td className="border px-2 py-1 text-xs bg-indigo-50 font-medium">
+                                                                4 Lot Check Date
+                                                            </td>
+                                                            {months.map((_, monthIdx) => (
+                                                                weeks.map((_, weekIdx) => {
+                                                                    const value = die.monthly_data?.[monthIdx + 1]?.lot4_check_date?.[weekIdx];
+
+                                                                    return renderEditableCell(
+                                                                        die,
+                                                                        monthIdx,
+                                                                        weekIdx,
+                                                                        'lot4_check_date',
+                                                                        value,
+                                                                        renderCell(value)
+                                                                    );
+                                                                })
+                                                            ))}
+                                                        </tr>
+                                                    )}
+
+                                                    {is4LotCheckTabActive && (
+                                                        <tr key={`${die.id}-6`} className="hover:bg-indigo-50/40">
+                                                            <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
+                                                            <td className="border px-2 py-1 text-xs text-indigo-700 font-semibold">
+                                                                PPM KE-
+                                                            </td>
+                                                            <td className="border px-2 py-1 text-center text-xs font-bold text-indigo-700">
+                                                                {die.ppm_count || 0}
+                                                            </td>
+                                                            <td className="border px-2 py-1 text-xs bg-indigo-50 font-medium">
+                                                                PPM Ke-
+                                                            </td>
+                                                            {months.map((_, monthIdx) => (
+                                                                weeks.map((_, weekIdx) => {
+                                                                    const sequence = ppmSequenceByCell[`${monthIdx}-${weekIdx}`];
+
+                                                                    return (
+                                                                        <td
+                                                                            key={`${die.id}-ppm-seq-${monthIdx}-${weekIdx}`}
+                                                                            className="border px-1 py-1 text-center"
+                                                                        >
+                                                                            {renderCell(sequence)}
+                                                                        </td>
+                                                                    );
+                                                                })
+                                                            ))}
+                                                        </tr>
+                                                    )}
+
                                                     {/* Row 4: PIC */}
                                                     <tr key={`${die.id}-4`} className="hover:bg-gray-50 border-b-2 border-gray-200">
                                                         <td className="border px-2 py-1 sticky left-[40px] bg-white z-10"></td>
@@ -730,6 +852,9 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                                             })
                                                         ))}
                                                     </tr>
+                                                    </>
+                                                        );
+                                                    })()}
                                                 </React.Fragment>
                                             ))}
                                         </React.Fragment>
@@ -839,6 +964,19 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                                     {statusScheduledCount}
                                 </div>
                                 <div className="text-sm text-blue-700">📌 Done PPM</div>
+                            </div>
+                            <div
+                                onClick={() => setScheduleFilter(scheduleFilter === 'lot4_check' ? 'all' : 'lot4_check')}
+                                className={`rounded-lg shadow-sm p-4 text-center border cursor-pointer transition hover:shadow-md ${
+                                    lot4CheckCount > 0 ? 'bg-indigo-50 border-indigo-300' : 'bg-gray-50 border-gray-200'
+                                } ${scheduleFilter === 'lot4_check' ? 'ring-2 ring-indigo-400' : ''}`}
+                            >
+                                <div className={`text-2xl font-bold ${lot4CheckCount > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                    {lot4CheckCount}
+                                </div>
+                                <div className="text-sm text-indigo-700">
+                                    <i className="fas fa-layer-group mr-1"></i>4 Lot Check
+                                </div>
                             </div>
                         </>
                     )}

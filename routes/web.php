@@ -57,8 +57,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('dies/{die}', [DieController::class, 'update']);
         Route::delete('dies/{die}', [DieController::class, 'destroy'])->name('dies.destroy');
         Route::post('dies/{die}/record-ppm', [DieController::class, 'recordPpm'])->name('dies.record-ppm');
+        Route::post('dies/{die}/record-4lc', [DieController::class, 'record4lcMaintenance'])->name('dies.record-4lc');
         Route::post('dies/{die}/schedule-ppm', [DieController::class, 'schedulePpm'])->name('dies.schedule-ppm');
         Route::post('dies/{die}/start-ppm', [DieController::class, 'startPpmProcessing'])->name('dies.start-ppm');
+        Route::post('dies/{die}/start-4lc', [DieController::class, 'start4lcProcessing'])->name('dies.start-4lc');
         // Flow: Processing PPM → "The Process is Normal?" → No → Additional Repair Dies
         Route::post('dies/{die}/additional-repair', [DieController::class, 'markAdditionalRepair'])->name('dies.additional-repair');
         Route::post('dies/{die}/resume-ppm', [DieController::class, 'resumePpmAfterRepair'])->name('dies.resume-ppm');
@@ -84,6 +86,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('dies/batch/set-last-lot-date', [DieController::class, 'batchSetLastLotDate'])->name('dies.batch-set-last-lot-date');
         Route::post('dies/{die}/set-last-lot-date', [DieController::class, 'setLastLotDate'])->name('dies.set-last-lot-date');
         Route::post('dies/{die}/approve-schedule', [DieController::class, 'approvePpmSchedule'])->name('dies.approve-schedule');
+        Route::post('dies/{die}/approve-4lc', [DieController::class, 'approve4LotCheckSchedule'])->name('dies.approve-4lc');
         // PPIC remark
         Route::post('dies/{die}/ppic-remark', [DieController::class, 'updatePpicRemark'])->name('dies.ppic-remark');
     });

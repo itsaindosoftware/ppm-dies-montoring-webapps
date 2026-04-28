@@ -3,7 +3,7 @@ import { Head, Link, useForm, router } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
 import StatusBadge from '@/Components/PPM/StatusBadge';
 import LotProgress from '@/Components/PPM/LotProgress';
-import { PROCESS_TYPES, CHECKLIST_ITEMS, getChecklistItems, getProcessTypeLabel, initializeChecklistResults } from '@/Utils/PpmChecklistData';
+import { FOUR_LOT_CHECK_PROCESS_TYPES, PROCESS_TYPES, getChecklistItems, getProcessTypeLabel, initializeChecklistResults } from '@/Utils/PpmChecklistData';
 import { confirmAction } from '@/Utils/swal';
 
 export default function DieShow({ auth, die }) {
@@ -11,10 +11,17 @@ export default function DieShow({ auth, die }) {
     const [showLotDateModal, setShowLotDateModal] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [showStartPpmModal, setShowStartPpmModal] = useState(false);
+    const [showStart4lcModal, setShowStart4lcModal] = useState(false);
     const [showCancelScheduleModal, setShowCancelScheduleModal] = useState(false);
     const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+    const [show4lcMaintenanceModal, setShow4lcMaintenanceModal] = useState(false);
     const [selectedProcessTypes, setSelectedProcessTypes] = useState([]);
+    const [selected4lcProcessTypes, setSelected4lcProcessTypes] = useState([]);
     const [activeProcess, setActiveProcess] = useState(null); // Track which process is being completed
+    const fourLcProcessTypes = useMemo(
+        () => PROCESS_TYPES.filter((p) => FOUR_LOT_CHECK_PROCESS_TYPES.includes(p.value)),
+        []
+    );
 
     // Check roles
     const canEditDies = ['admin', 'mtn_dies'].includes(auth.user.role);
@@ -26,9 +33,14 @@ export default function DieShow({ auth, die }) {
     die.ppm_alert_status !== 'transferred_to_mtn' ||
     !die.transferred_at || die.ppm_status !== 'red';
 
+    const isStart4lcBlocked =
+    !die.schedule_approved_at ||
+    die.ppm_alert_status !== 'transferred_to_mtn_4lc' ||
+    !die.transferred_at;
+
     // Check if multi-process PPM is active (has processes that are not all completed)
     const hasActiveProcesses = die.die_processes && die.die_processes.length > 0 &&
-        !die.ppm_process_progress?.all_completed;
+        !(die.is_4lot_check ? die.lot_check_progress?.all_completed : die.ppm_process_progress?.all_completed);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         ppm_date: new Date().toISOString().split('T')[0],
@@ -56,20 +68,69 @@ export default function DieShow({ auth, die }) {
 
     const canRecordPpm =
         isMtnDies &&
+        !die.is_4lot_check &&
         die.ppm_status === 'red' &&
         hasRequiredPpmFlowMilestones &&
         isRecordPpmAlertStatusAllowed;
+
+    const canRecord4lcMaintenance =
+        isMtnDies &&
+        !!die.is_4lot_check &&
+        ['transferred_to_mtn_4lc', '4lc_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
+
+    const canConfirm4LotCheck =
+        isPpic &&
+        !!die.is_4lot_check &&
+        !!die.ppm_scheduled_date &&
+        die.ppm_alert_status === '4lc_scheduled';
+
+    const canConfirmRegularSchedule =
+        isPpic &&
+        !die.is_4lot_check &&
+        !!die.ppm_scheduled_date &&
+        !['schedule_approved', 'red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status);
     // const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
-    const canStartPpmProcessing = isMtnDies && !isStartPpmBlocked;
+    const canStartPpmProcessing = isMtnDies && !die.is_4lot_check && !isStartPpmBlocked;
+    const canStart4lcProcessing = isMtnDies && !!die.is_4lot_check && !isStart4lcBlocked;
+    const ppmHistoryEntries = useMemo(
+        () => (die.ppmHistories || []).filter((history) =>
+            history?.status === 'done' && history?.maintenance_type !== '4lc_maintenance'
+        ),
+        [die.ppmHistories]
+    );
+
+    const fourLotCheckHistories = useMemo(
+        () => (die.ppmHistories || []).filter((history) =>
+            history?.status === 'done' && history?.maintenance_type === '4lc_maintenance'
+        ),
+        [die.ppmHistories]
+    );
+
+    const maintenanceChecklistItems = useMemo(() => {
+        return getChecklistItems(data.process_type, {
+            is4LotCheck: show4lcMaintenanceModal && activeProcess && FOUR_LOT_CHECK_PROCESS_TYPES.includes(data.process_type),
+        });
+    }, [show4lcMaintenanceModal, activeProcess, data.process_type]);
 
     // Update checklist when process_type changes
     useEffect(() => {
-        if (data.process_type) {
-            setData('checklist_results', initializeChecklistResults(data.process_type));
-        } else {
+        if (!data.process_type) {
             setData('checklist_results', []);
+            return;
         }
-    }, [data.process_type]);
+
+        setData('checklist_results', initializeChecklistResults(data.process_type, {
+            is4LotCheck: show4lcMaintenanceModal && activeProcess && FOUR_LOT_CHECK_PROCESS_TYPES.includes(data.process_type),
+        }));
+    }, [data.process_type, show4lcMaintenanceModal, activeProcess]);
+
+    /* Previous auto-select 4LC modal behavior kept here for reference.
+    useEffect(() => {
+        if (showStart4lcModal && selected4lcProcessTypes.length === 0) {
+            setSelected4lcProcessTypes(fourLcProcessTypes.map((p) => p.value));
+        }
+    }, [showStart4lcModal, selected4lcProcessTypes.length, fourLcProcessTypes]);
+    */
 
     // PPIC: Last LOT Date form
     const lotDateForm = useForm({
@@ -128,6 +189,27 @@ export default function DieShow({ auth, die }) {
         }
     };
 
+    const handleRecord4lcMaintenance = (e) => {
+        e.preventDefault();
+        if (activeProcess) {
+            post(route('dies.process-complete', { process: activeProcess.encrypted_id }), {
+                onSuccess: () => {
+                    setShow4lcMaintenanceModal(false);
+                    setActiveProcess(null);
+                    reset();
+                },
+            });
+        } else {
+            post(route('dies.record-4lc', { die: die.encrypted_id }), {
+                onSuccess: () => {
+                    setShow4lcMaintenanceModal(false);
+                    setActiveProcess(null);
+                    reset();
+                },
+            });
+        }
+    };
+
     const openProcessCompleteModal = (proc) => {
         setActiveProcess(proc);
         setData({
@@ -145,6 +227,44 @@ export default function DieShow({ auth, die }) {
             approved_by: '',
         });
         setShowPpmModal(true);
+    };
+
+    const open4lcMaintenanceModal = () => {
+        setActiveProcess(null);
+        setData({
+            ...data,
+            ppm_date: new Date().toISOString().split('T')[0],
+            pic: auth.user.name,
+            maintenance_type: '4lc_maintenance',
+            process_type: die.process_type || '',
+            checklist_results: die.process_type ? initializeChecklistResults(die.process_type) : [],
+            work_performed: '',
+            parts_replaced: '',
+            findings: '',
+            recommendations: '',
+            checked_by: '',
+            approved_by: '',
+        });
+        setShow4lcMaintenanceModal(true);
+    };
+
+    const open4lcProcessCompleteModal = (proc) => {
+        setActiveProcess(proc);
+        setData({
+            ...data,
+            ppm_date: new Date().toISOString().split('T')[0],
+            pic: auth.user.name,
+            maintenance_type: '4lc_maintenance',
+            process_type: proc.process_type,
+            checklist_results: initialize4lcChecklistResults(proc.process_type),
+            work_performed: '',
+            parts_replaced: '',
+            findings: '',
+            recommendations: '',
+            checked_by: '',
+            approved_by: '',
+        });
+        setShow4lcMaintenanceModal(true);
     };
 
     const handleSetLotDate = (e) => {
@@ -169,9 +289,7 @@ export default function DieShow({ auth, die }) {
 
     const handleStartPpmWithProcesses = (e) => {
         e.preventDefault();
-        router.post(route('dies.start-ppm', { die: die.encrypted_id }), {
-            process_types: selectedProcessTypes,
-        }, {
+        router.post(route('dies.start-ppm', { die: die.encrypted_id }), { process_types: selectedProcessTypes }, {
             onSuccess: () => {
                 setShowStartPpmModal(false);
                 setSelectedProcessTypes([]);
@@ -179,8 +297,33 @@ export default function DieShow({ auth, die }) {
         });
     };
 
+    const handleStart4lcWithProcesses = (e) => {
+        e.preventDefault();
+        // Previous implementation kept for reference.
+        // const processTypes = selected4lcProcessTypes.length > 0
+        //     ? selected4lcProcessTypes
+        //     : fourLcProcessTypes.map((p) => p.value);
+
+        const processTypes = selected4lcProcessTypes.length > 0
+            ? selected4lcProcessTypes
+            : fourLcProcessTypes.map((p) => p.value);
+
+        router.post(route('dies.start-4lc', { die: die.encrypted_id }), { process_types: processTypes }, {
+            onSuccess: () => {
+                setShowStart4lcModal(false);
+                setSelected4lcProcessTypes([]);
+            },
+        });
+    };
+
     const toggleProcessType = (value) => {
         setSelectedProcessTypes(prev =>
+            prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+        );
+    };
+
+    const toggle4lcProcessType = (value) => {
+        setSelected4lcProcessTypes(prev =>
             prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
         );
     };
@@ -280,7 +423,7 @@ export default function DieShow({ auth, die }) {
                 {/* Header */}
                 <div className="flex justify-between items-start">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark: text-gray-100">
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                             {die.part_number}
                         </h1>
                         <p className="text-gray-500 dark:text-gray-400 mt-1">
@@ -302,7 +445,9 @@ export default function DieShow({ auth, die }) {
                                     ✏️ Edit
                                 </Link>
                                 <button
-                                    onClick={() => setShowPpmModal(true)}
+                                    onClick={() => {
+                                        setShowPpmModal(true);
+                                    }}
                                     disabled={!canRecordPpm}
                                     className={`px-4 py-2 rounded-lg transition ${
                                         canRecordPpm
@@ -313,6 +458,14 @@ export default function DieShow({ auth, die }) {
                                 >
                                     📝 Record PPM
                                 </button>
+                                {canRecord4lcMaintenance && (
+                                    <button
+                                        onClick={open4lcMaintenanceModal}
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                                    >
+                                        📝 Record 4LC Maintenance
+                                    </button>
+                                )}
                             </>
                         )}
                         {/* PPIC: Set Next LOT Date */}
@@ -325,7 +478,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* PPIC: Confirm PPM Schedule */}
-                        {isPpic && die.ppm_scheduled_date && !['schedule_approved', 'red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
+                        {canConfirmRegularSchedule && (
                             <button
                                 onClick={async () => {
                                     const ok = await confirmAction({
@@ -342,8 +495,26 @@ export default function DieShow({ auth, die }) {
                                 ✅ Confirm PPM Schedule
                             </button>
                         )}
+                        {/* PPIC: Confirm 4 Lot Check */}
+                        {canConfirm4LotCheck && (
+                            <button
+                                onClick={async () => {
+                                    const ok = await confirmAction({
+                                        title: 'Confirm 4 Lot Check?',
+                                        text: `Confirm 4 Lot Check schedule for die ${die.part_number}?`,
+                                        icon: 'question',
+                                        confirmText: '✅ Yes, Confirm 4LC',
+                                        confirmColor: '#4f46e5',
+                                    });
+                                    if (ok) router.post(route('dies.approve-4lc', { die: die.encrypted_id }));
+                                }}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                            >
+                                ✅ Confirm 4 Lot Check
+                            </button>
+                        )}
                         {/* PROD: Transfer Dies to MTN */}
-                        {isProd && die.ppm_status === 'red' && !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
+                        {isProd && die.ppm_status === 'red' && !['transferred_to_mtn', 'transferred_to_mtn_4lc', 'ppm_in_progress', '4lc_in_progress', 'additional_repair', 'ppm_completed', '4lc_completed'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={() => setShowTransferModal(true)}
                                 className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
@@ -352,7 +523,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* MTN Dies: Cancel Schedule */}
-                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', 'schedule_approved'].includes(die.ppm_alert_status) && (
+                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', '4lc_scheduled', '4lc_approved', 'schedule_approved'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={() => setShowCancelScheduleModal(true)}
                                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
@@ -361,7 +532,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* MTN Dies: Reschedule */}
-                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', 'schedule_approved'].includes(die.ppm_alert_status) && (
+                        {isMtnDies && die.ppm_scheduled_date && ['ppm_scheduled', '4lc_scheduled', '4lc_approved', 'schedule_approved'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={() => setShowRescheduleModal(true)}
                                 className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition"
@@ -372,14 +543,29 @@ export default function DieShow({ auth, die }) {
                         {/* MTN Dies: Start PPM Processing */}
                         {canStartPpmProcessing && (
                             <button
-                                onClick={() => setShowStartPpmModal(true)}
+                                onClick={() => {
+                                    setShowStartPpmModal(true);
+                                }}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                             >
                                 ▶️ Start PPM Processing
                             </button>
                         )}
+                        {/* MTN Dies: Start 4LC Processing */}
+                        {canStart4lcProcessing && (
+                            <button
+                                onClick={() => {
+                                    // Previous implementation kept for reference.
+                                    // setSelected4lcProcessTypes(fourLcProcessTypes.map((p) => p.value));
+                                    setShowStart4lcModal(true);
+                                }}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                            >
+                                ▶️ Start 4LC Processing
+                            </button>
+                        )}
                         {/* MTN Dies: Additional Repair */}
-                        {isMtnDies && die.ppm_alert_status === 'ppm_in_progress' && (
+                        {isMtnDies && ['ppm_in_progress', '4lc_in_progress'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={async () => {
                                     const ok = await confirmAction({
@@ -435,10 +621,10 @@ export default function DieShow({ auth, die }) {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg: grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                     {/* Info banner when Record PPM is disabled */}
-                    {canEditDies && !canRecordPpm && die.ppm_status === 'red' && !['ppm_completed'].includes(die.ppm_alert_status) && (
+                    {canEditDies && !die.is_4lot_check && !canRecordPpm && die.ppm_status === 'red' && !['ppm_completed'].includes(die.ppm_alert_status) && (
                         <div className="lg:col-span-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
                             <div className="flex items-start gap-3">
                                 <span className="text-2xl">⚠️</span>
@@ -480,10 +666,10 @@ export default function DieShow({ auth, die }) {
                                 </div>
                                 <div className="flex justify-between">
                                     <dt className="text-gray-500 dark:text-gray-400">Tonnage</dt>
-                                    <dd className="font-medium text-gray-900 dark: text-gray-100">{die.tonnage}</dd>
+                                    <dd className="font-medium text-gray-900 dark:text-gray-100">{die.tonnage}</dd>
                                 </div>
                                 <div className="flex justify-between">
-                                    <dt className="text-gray-500 dark: text-gray-400">Qty Die</dt>
+                                    <dt className="text-gray-500 dark:text-gray-400">Qty Die</dt>
                                     <dd className="font-medium text-gray-900 dark:text-gray-100">{die.qty_die}</dd>
                                 </div>
                                 <div className="flex justify-between">
@@ -500,7 +686,7 @@ export default function DieShow({ auth, die }) {
                                 </div>
                                 <div className="flex justify-between">
                                     <dt className="text-gray-500 dark:text-gray-400">Last PPM</dt>
-                                    <dd className="font-medium text-gray-900 dark: text-gray-100">{die.last_ppm_date || '-'}</dd>
+                                    <dd className="font-medium text-gray-900 dark:text-gray-100">{die.last_ppm_date || '-'}</dd>
                                 </div>
                                 <div className="flex justify-between">
                                     <dt className="text-gray-500 dark:text-gray-400">Last Stroke</dt>
@@ -510,11 +696,15 @@ export default function DieShow({ auth, die }) {
                                     <dt className="text-gray-500 dark:text-gray-400">Group Name</dt>
                                     <dd className="font-medium text-gray-900 dark:text-gray-100">{die.group_name || '-'}</dd>
                                 </div>
+                                <div className="flex justify-between">
+                                    <dt className="text-gray-500 dark:text-gray-400">4 Lot Check</dt>
+                                    <dd className="font-medium text-gray-900 dark:text-gray-100">{die.is_4lot_check ? 'Yes' : 'No'}</dd>
+                                </div>
                             </dl>
                         </div>
 
                         {/* PPM Flow Status Card - only show when PPM flow is actives */}
-                        {die.ppm_alert_status && (
+                        {!die.is_4lot_check && die.ppm_alert_status && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     📋 PPM Flow Status
@@ -552,7 +742,7 @@ export default function DieShow({ auth, die }) {
                                     )}
 
                                     {/* MTN Dies: PPM Scheduled Info */}
-                                    {die.ppm_scheduled_date && (
+                                    {die.ppm_scheduled_date && !die.is_4lot_check && (
                                         <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                                             <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase mb-1">
                                                 🗓️ MTN Dies - PPM Schedule
@@ -569,7 +759,7 @@ export default function DieShow({ auth, die }) {
                                     )}
 
                                     {/* PPIC: Schedule Approved Info */}
-                                    {die.schedule_approved_at && (
+                                    {die.schedule_approved_at && !die.is_4lot_check && (
                                         <div className="p-3 bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg">
                                             <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 uppercase mb-1">
                                                 ✅ PPIC - Schedule Approved
@@ -662,8 +852,85 @@ export default function DieShow({ auth, die }) {
                             </div>
                         )}
 
+                        {die.is_4lot_check && die.ppm_alert_status && (
+                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                                    🟣 4 Lot Check Flow Status
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className={`p-3 rounded-lg border ${
+                                        die.ppm_alert_status === '4lc_scheduled' ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' :
+                                        die.ppm_alert_status === '4lc_approved' ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' :
+                                        die.ppm_alert_status === 'transferred_to_mtn_4lc' ? 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' :
+                                        die.ppm_alert_status === '4lc_in_progress' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
+                                        die.ppm_alert_status === 'additional_repair' ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800' :
+                                        die.ppm_alert_status === '4lc_completed' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
+                                        'bg-gray-50 border-gray-200 dark:bg-gray-700/50 dark:border-gray-600'
+                                    }`}>
+                                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                            {die.ppm_alert_status === '4lc_scheduled' && 'MTN Dies: 4LC Scheduled'}
+                                            {die.ppm_alert_status === '4lc_approved' && 'PPIC: 4LC Approved'}
+                                            {die.ppm_alert_status === 'transferred_to_mtn_4lc' && 'PROD: 4LC Transferred to MTN'}
+                                            {die.ppm_alert_status === '4lc_in_progress' && 'MTN Dies: 4LC In Progress'}
+                                            {die.ppm_alert_status === 'additional_repair' && 'MTN Dies: 4LC Additional Repair'}
+                                            {die.ppm_alert_status === '4lc_completed' && 'MTN Dies: 4LC Completed'}
+                                            {!['4lc_scheduled', '4lc_approved', 'transferred_to_mtn_4lc', '4lc_in_progress', 'additional_repair', '4lc_completed'].includes(die.ppm_alert_status) && '4LC Status'}
+                                        </p>
+                                    </div>
+
+                                    {die.ppm_scheduled_date && (
+                                        <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                                            <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 uppercase mb-1">
+                                                🗓️ MTN Dies - 4LC Schedule
+                                            </p>
+                                            <p className="text-sm font-bold text-indigo-900 dark:text-indigo-100">
+                                                Scheduled: {die.ppm_scheduled_date}
+                                            </p>
+                                            {die.ppm_scheduled_by && (
+                                                <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+                                                    PIC: {die.ppm_scheduled_by}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {die.schedule_approved_at && (
+                                        <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                                            <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 uppercase mb-1">
+                                                ✅ PPIC - 4LC Approved
+                                            </p>
+                                            <p className="text-sm font-bold text-indigo-900 dark:text-indigo-100">
+                                                Approved: {die.schedule_approved_at}
+                                            </p>
+                                            {die.schedule_approved_by && (
+                                                <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+                                                    By: {die.schedule_approved_by}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {die.transferred_at && (
+                                        <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                                            <p className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase mb-1">
+                                                🚚 PROD - Transfer Dies to MTN Dies
+                                            </p>
+                                            <p className="text-sm text-orange-900 dark:text-orange-100">
+                                                <span className="font-medium">{die.transfer_from_location}</span>
+                                                <span className="mx-2">→</span>
+                                                <span className="font-bold">{die.transfer_to_location}</span>
+                                            </p>
+                                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                                {die.transferred_by && <>By: {die.transferred_by} | </>}Date: {die.transferred_at}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Multi-Process PPM Progress Card, kalau sudah isi start ppm processing, muncul ini */}
-                        {die.die_processes && die.die_processes.length > 0 && (
+                        {!die.is_4lot_check && die.die_processes && die.die_processes.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     ⚙️ PPM Process Progress
@@ -741,6 +1008,94 @@ export default function DieShow({ auth, die }) {
                                                 {isMtnDies && proc.ppm_status === 'in_progress' && (
                                                     <button
                                                         onClick={() => openProcessCompleteModal(proc)}
+                                                        className="px-2 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600 transition"
+                                                    >
+                                                        📝 Complete & Record
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Multi-Process 4LC Progress Card */}
+                        {die.is_4lot_check && die.die_processes && die.die_processes.length > 0 && (
+                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                                    ⚙️ 4LC Process Progress
+                                </h3>
+
+                                {die.lot_check_progress && (
+                                    <div className="mb-4">
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span className="text-gray-600 dark:text-gray-400">
+                                                {die.lot_check_progress.completed}/{die.lot_check_progress.total} processes completed
+                                            </span>
+                                            <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                                {die.lot_check_progress.percentage}%
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3">
+                                            <div
+                                                className={`h-3 rounded-full transition-all ${
+                                                    die.lot_check_progress.all_completed ? 'bg-green-500' : 'bg-indigo-500'
+                                                }`}
+                                                style={{ width: `${die.lot_check_progress.percentage}%` }} 
+                                            ></div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-2">
+                                    {die.die_processes.map((proc) => (
+                                        <div key={proc.id} className={`flex items-center justify-between p-3 rounded-lg border ${
+                                            proc.lot_check_status === 'completed' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
+                                            proc.lot_check_status === 'in_progress' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
+                                            'bg-gray-50 border-gray-200 dark:bg-gray-700/50 dark:border-gray-600'
+                                        }`}>
+                                            <div className="flex items-center gap-3">
+                                                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                                                    proc.lot_check_status === 'completed' ? 'bg-green-500 text-white' :
+                                                    proc.lot_check_status === 'in_progress' ? 'bg-blue-500 text-white' :
+                                                    'bg-gray-300 text-gray-600 dark:bg-gray-500 dark:text-gray-200'
+                                                }`}>{proc.process_order}</span>
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{proc.process_label}</p>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                        {proc.lot_check_status === 'completed' && proc.lot_check_completed_at && `Completed: ${proc.lot_check_completed_at}`}
+                                                        {proc.lot_check_status === 'in_progress' && proc.lot_check_started_at && `Started: ${proc.lot_check_started_at}`}
+                                                        {proc.lot_check_status === 'pending' && 'Pending'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                    proc.lot_check_status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                                    proc.lot_check_status === 'in_progress' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                                    'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200'
+                                                }`}>{proc.lot_check_status_label}</span>
+                                                {isMtnDies && proc.lot_check_status === 'pending' && ['4lc_in_progress', 'additional_repair'].includes(die.ppm_alert_status) && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            const ok = await confirmAction({
+                                                                title: 'Start Process?',
+                                                                text: `Start process "${proc.process_label}" for die ${die.part_number}?`,
+                                                                icon: 'question',
+                                                                confirmText: '▶️ Yes, Start',
+                                                                confirmColor: '#4f46e5',
+                                                            });
+                                                            if (ok) router.post(route('dies.process-start', { process: proc.encrypted_id }));
+                                                        }}
+                                                        className="px-2 py-1 bg-indigo-500 text-white text-xs rounded hover:bg-indigo-600 transition"
+                                                    >
+                                                        ▶️ Start
+                                                    </button>
+                                                )}
+                                                {isMtnDies && proc.lot_check_status === 'in_progress' && (
+                                                    <button
+                                                        onClick={() => open4lcProcessCompleteModal(proc)}
                                                         className="px-2 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600 transition"
                                                     >
                                                         📝 Complete & Record
@@ -863,7 +1218,7 @@ export default function DieShow({ auth, die }) {
                                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                                         {displayRemainingStrokes.toLocaleString()}
                                     </p>
-                                    <p className="text-xs text-gray-500 dark: text-gray-400">Remaining Strokes</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">Remaining Strokes</p>
                                 </div>
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -1054,7 +1409,7 @@ export default function DieShow({ auth, die }) {
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                 📋 PPM History
                             </h3>
-                            {die.ppmHistories && die.ppmHistories.length > 0 ? (
+                            {ppmHistoryEntries.length > 0 ? (
                                 <div className="overflow-x-auto">
                                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                         <thead>
@@ -1069,7 +1424,7 @@ export default function DieShow({ auth, die }) {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                            {die.ppmHistories.map((history) => (
+                                            {ppmHistoryEntries.map((history) => (
                                                 <tr key={history.id}>
                                                     <td className="px-3 py-2 text-sm">{history.ppm_date}</td>
                                                     <td className="px-3 py-2 text-sm">{history.stroke_at_ppm?. toLocaleString()}</td>
@@ -1108,6 +1463,65 @@ export default function DieShow({ auth, die }) {
                             )}
                         </div>
 
+                        {/* 4 Lot Check History */}
+                        {die.is_4lot_check && die.lot_check_progress?.all_completed && (
+                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                                    ✅ 4 Lot Check History
+                                </h3>
+                                {fourLotCheckHistories.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead>
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Stroke</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">PIC</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Process</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Checklist</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {fourLotCheckHistories.map((history) => (
+                                                    <tr key={history.id}>
+                                                        <td className="px-3 py-2 text-sm">{history.ppm_date}</td>
+                                                        <td className="px-3 py-2 text-sm">{history.stroke_at_ppm?.toLocaleString()}</td>
+                                                        <td className="px-3 py-2 text-sm">{history.pic}</td>
+                                                        <td className="px-3 py-2 text-sm">
+                                                            {history.process_type ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                                                                    {getProcessTypeLabel(history.process_type)}
+                                                                </span>
+                                                            ) : '-'}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-sm">
+                                                            {history.checklist_results && history.checklist_results.length > 0 ? (
+                                                                <span className="text-xs">
+                                                                    <span className="text-green-600">✓ {history.checklist_results.filter(c => c.result === 'normal').length}</span>
+                                                                    {' / '}
+                                                                    <span className="text-red-600">✗ {history.checklist_results.filter(c => c.result === 'unusual').length}</span>
+                                                                </span>
+                                                            ) : '-'}
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                                {history.status}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-gray-500">
+                                        No 4 Lot Check history yet
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Production Logs */}
                         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                             <div className="flex justify-between items-center mb-4">
@@ -1116,7 +1530,7 @@ export default function DieShow({ auth, die }) {
                                 </h3>
                                 <Link
                                     href={route('production.index', { die_id: die.id })}
-                                    className="text-sm text-blue-600 hover: text-blue-800"
+                                    className="text-sm text-blue-600 hover:text-blue-800"
                                 >
                                     View All →
                                 </Link>
@@ -1177,14 +1591,15 @@ export default function DieShow({ auth, die }) {
                                     </p>
                                 </div>
                                 <button
-                                    onClick={() => { setShowPpmModal(false); setActiveProcess(null); }}
+                                    onClick={() => {
+                                        setShowPpmModal(false);
+                                        setActiveProcess(null);
+                                    }}
                                     className="text-gray-500 hover:text-gray-700 text-2xl"
                                 >
                                     ✕
                                 </button>
                             </div>
-
-                            {/* Die Info Header - mirrors the paper form */}
                             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                                 <div>
                                     <span className="text-gray-500 dark:text-gray-400">PART NAME:</span>
@@ -1666,7 +2081,9 @@ export default function DieShow({ auth, die }) {
                                     ▶️ Start PPM Processing
                                 </h3>
                                 <button
-                                    onClick={() => setShowStartPpmModal(false)}
+                                    onClick={() => {
+                                        setShowStartPpmModal(false);
+                                    }}
                                     className="text-gray-500 hover:text-gray-700 text-2xl"
                                 >
                                     ✕
@@ -1675,8 +2092,7 @@ export default function DieShow({ auth, die }) {
 
                             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
                                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                                    <strong>ℹ️ Info:</strong> This die has <strong>{die.qty_die}</strong> processes (qty die).
-                                    Select the processes to perform PPM on. Each process will be tracked separately.
+                                    <strong>ℹ️ Info:</strong> This die has <strong>{die.qty_die}</strong> processes (qty die). Select the processes to perform PPM on. Each process will be tracked separately.
                                 </p>
                             </div>
 
@@ -1712,7 +2128,9 @@ export default function DieShow({ auth, die }) {
                                 <div className="flex justify-end gap-3 pt-4">
                                     <button
                                         type="button"
-                                        onClick={() => setShowStartPpmModal(false)}
+                                        onClick={() => {
+                                            setShowStartPpmModal(false);
+                                        }}
                                         className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
                                     >
                                         Cancel
@@ -1723,6 +2141,419 @@ export default function DieShow({ auth, die }) {
                                     >
                                         ▶️ Start PPM Processing
                                     </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MTN Dies: Start 4LC with Process Selection Modal */}
+            {showStart4lcModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                                    ▶️ Start 4LC Processing
+                                </h3>
+                                <button
+                                    onClick={() => setShowStart4lcModal(false)}
+                                    className="text-gray-500 hover:text-gray-700 text-2xl"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 mb-4">
+                                <p className="text-sm text-indigo-800 dark:text-indigo-200">
+                                    <strong>ℹ️ Info:</strong> Select the 4LC processes to perform. Only <strong>Pierce</strong> and <strong>Trim</strong> are available.
+                                </p>
+                            </div>
+
+                            <form onSubmit={handleStart4lcWithProcesses} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                                        Select Process Types for 4LC:
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {fourLcProcessTypes.map((p) => (
+                                            <label key={p.value} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition ${
+                                                selected4lcProcessTypes.includes(p.value)
+                                                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-400'
+                                                    : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selected4lcProcessTypes.includes(p.value)}
+                                                    onChange={() => toggle4lcProcessType(p.value)}
+                                                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                                                />
+                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{p.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    {selected4lcProcessTypes.length > 0 && (
+                                        <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
+                                            ✓ {selected4lcProcessTypes.length} process(es) selected
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-end gap-3 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowStart4lcModal(false)}
+                                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        // Previous implementation kept for reference.
+                                        // disabled={selected4lcProcessTypes.length === 0}
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                                    >
+                                        ▶️ Start 4LC Processing
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MTN Dies: Record 4LC Maintenance Modal */}
+            {show4lcMaintenanceModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[95vh] overflow-y-auto">
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                                        {activeProcess
+                                            ? `📝 INSPECTION CHECK — ${activeProcess.process_label}`
+                                            : '📝 INSPECTION CHECK 4LC'
+                                        }
+                                    </h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                        {die.part_number} — {die.part_name}
+                                        {activeProcess && (
+                                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                                Process {activeProcess.process_order} of {die.die_processes?.length}
+                                            </span>
+                                        )}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShow4lcMaintenanceModal(false);
+                                        setActiveProcess(null);
+                                    }}
+                                    className="text-gray-500 hover:text-gray-700 text-2xl"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">PART NAME:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{die.part_name}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">PM ID:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">PPM-{(die.ppm_count || 0) + 1}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">PART No.:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{die.part_number}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">DIES No.:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{die.qty_die}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">MODEL:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{die.machineModel?.code}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">CUSTOMER:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{die.customer?.code}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">TOTAL STROKE:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{displayStroke.toLocaleString()}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 dark:text-gray-400">STANDARD:</span>
+                                    <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">{die.standard_stroke?.toLocaleString()} STROKE</span>
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleRecord4lcMaintenance} className="space-y-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            PPM Date *
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={data.ppm_date}
+                                            onChange={(e) => setData('ppm_date', e.target.value)}
+                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                            required
+                                        />
+                                        {errors.ppm_date && <p className="text-red-500 text-xs mt-1">{errors.ppm_date}</p>}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            PIC *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={data.pic}
+                                            onChange={(e) => setData('pic', e.target.value)}
+                                            placeholder="Person In Charge"
+                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                            required
+                                        />
+                                        {errors.pic && <p className="text-red-500 text-xs mt-1">{errors.pic}</p>}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            Maintenance Type *
+                                        </label>
+                                        <select
+                                            value={data.maintenance_type}
+                                            onChange={(e) => setData('maintenance_type', e.target.value)}
+                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                        >
+                                            <option value="routine">PPM</option>
+                                            <option value="repair">Repair</option>
+                                            <option value="overhaul">Overhaul</option>
+                                            <option value="emergency">Emergency</option>
+                                            <option value="4lc_maintenance">4LC Maintenance</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            PROCESS *
+                                        </label>
+                                        <select
+                                            value={data.process_type}
+                                            onChange={(e) => setData('process_type', e.target.value)}
+                                            className={`w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm font-semibold ${activeProcess ? 'bg-gray-100 dark:bg-gray-800' : ''}`}
+                                            required
+                                            disabled={!!activeProcess}
+                                        >
+                                            <option value="">-- Select Process --</option>
+                                            {fourLcProcessTypes.map((p) => (
+                                                <option key={p.value} value={p.value}>
+                                                    {p.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {activeProcess && (
+                                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+                                                🔒 Process type locked — completing: {activeProcess.process_label}
+                                            </p>
+                                        )}
+                                        {errors.process_type && <p className="text-red-500 text-xs mt-1">{errors.process_type}</p>}
+                                    </div>
+                                </div>
+
+                                {data.process_type && data.checklist_results.length > 0 && (
+                                    <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                                        <div className="bg-indigo-600 text-white px-4 py-2 flex justify-between items-center">
+                                            <h4 className="font-semibold text-sm">
+                                                📋 CHECK LIST ITEM — {getProcessTypeLabel(data.process_type)}
+                                            </h4>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                                    data.checklist_results.filter(c => c.result).length === data.checklist_results.length
+                                                        ? 'bg-green-500 text-white'
+                                                        : 'bg-indigo-500 text-white'
+                                                }`}>
+                                                    {data.checklist_results.filter(c => c.result).length} / {data.checklist_results.length} filled
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead className="bg-gray-100 dark:bg-gray-700">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-12">No.</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">CHECK LIST ITEM</th>
+                                                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 w-24" colSpan="2">
+                                                        Inspection Result
+                                                    </th>
+                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-40">Remark</th>
+                                                </tr>
+                                                <tr>
+                                                    <th></th>
+                                                    <th></th>
+                                                    <th className="px-2 py-1 text-center text-xs text-gray-500 dark:text-gray-400 w-12">Normal</th>
+                                                    <th className="px-2 py-1 text-center text-xs text-gray-500 dark:text-gray-400 w-12">Unusual</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {maintenanceChecklistItems.map((item, index) => (
+                                                    <tr key={item.no} className={`${index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'}`}>
+                                                        <td className="px-3 py-2 text-sm font-medium text-gray-900 dark:text-gray-100 text-center align-top">
+                                                            {item.no}
+                                                        </td>
+                                                        <td className="px-3 py-2 align-top">
+                                                            <p className="text-sm text-gray-900 dark:text-gray-100">{item.description_en}</p>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 italic">{item.description_id}</p>
+                                                        </td>
+                                                        <td className="px-2 py-2 text-center align-top">
+                                                            <input
+                                                                type="radio"
+                                                                name={`checklist_4lc_${item.no}`}
+                                                                checked={data.checklist_results[index]?.result === 'normal'}
+                                                                onChange={() => {
+                                                                    const updated = [...data.checklist_results];
+                                                                    updated[index] = { ...updated[index], result: 'normal' };
+                                                                    setData('checklist_results', updated);
+                                                                }}
+                                                                className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-2 py-2 text-center align-top">
+                                                            <input
+                                                                type="radio"
+                                                                name={`checklist_4lc_${item.no}`}
+                                                                checked={data.checklist_results[index]?.result === 'unusual'}
+                                                                onChange={() => {
+                                                                    const updated = [...data.checklist_results];
+                                                                    updated[index] = { ...updated[index], result: 'unusual' };
+                                                                    setData('checklist_results', updated);
+                                                                }}
+                                                                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-2 py-2 align-top">
+                                                            <input
+                                                                type="text"
+                                                                value={data.checklist_results[index]?.remark || ''}
+                                                                onChange={(e) => {
+                                                                    const updated = [...data.checklist_results];
+                                                                    updated[index] = { ...updated[index], remark: e.target.value };
+                                                                    setData('checklist_results', updated);
+                                                                }}
+                                                                placeholder="..."
+                                                                className="w-full rounded border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 text-xs py-1 px-2"
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+
+                                {!data.process_type && (
+                                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 text-center">
+                                        <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                                            ⚠️ Select a <strong>Process Type</strong> above to display the 4LC inspection checklist.
+                                        </p>
+                                        <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                                            The process type determines which inspection items need to be checked.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">📝 Additional Notes</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                Work Performed
+                                            </label>
+                                            <textarea
+                                                value={data.work_performed}
+                                                onChange={(e) => setData('work_performed', e.target.value)}
+                                                rows="2"
+                                                placeholder="Describe the work performed..."
+                                                className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                Parts Replaced
+                                            </label>
+                                            <textarea
+                                                value={data.parts_replaced}
+                                                onChange={(e) => setData('parts_replaced', e.target.value)}
+                                                rows="2"
+                                                placeholder="List parts replaced..."
+                                                className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">Note:</p>
+                                    <p className="text-xs text-blue-600 dark:text-blue-400"># Cleaning Dies Lower & Upper</p>
+                                    <p className="text-xs text-blue-600 dark:text-blue-400"># Check All Bolt Lower & Upper Dies</p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                            Checked By
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={data.checked_by}
+                                            onChange={(e) => setData('checked_by', e.target.value)}
+                                            placeholder="e.g., Mr. Kammee"
+                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                            Approved By
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={data.approved_by}
+                                            onChange={(e) => setData('approved_by', e.target.value)}
+                                            placeholder="e.g., Mr. Manop"
+                                            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                        <strong>⚠️ Note:</strong> Recording 4LC maintenance will update the stroke checkpoint. Current stroke: <strong>{displayStroke.toLocaleString()}</strong>
+                                    </p>
+                                </div>
+
+                                <div className="flex justify-end gap-3 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShow4lcMaintenanceModal(false); setActiveProcess(null); }}
+                                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={processing || !data.process_type || (data.checklist_results.length > 0 && data.checklist_results.some(c => !c.result))}
+                                        className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={(data.checklist_results.length > 0 && data.checklist_results.some(c => !c.result)) ? 'All checklist items must be filled in first' : ''}
+                                    >
+                                        {processing ? 'Saving...' : '✓ Record 4LC Maintenance'}
+                                    </button>
+                                    {data.checklist_results.length > 0 && data.checklist_results.some(c => !c.result) && (
+                                        <p className="text-xs text-red-500 mt-1">
+                                            ⚠ Complete all checklist items ({data.checklist_results.filter(c => c.result).length}/{data.checklist_results.length}) before submitting
+                                        </p>
+                                    )}
                                 </div>
                             </form>
                         </div>

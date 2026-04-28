@@ -13,6 +13,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     const [status, setStatus] = useState(filters?.status || '');
     const [ppmDoneDate, setPpmDoneDate] = useState(filters?.ppm_done_date || '');
     const [lineFilter, setLineFilter] = useState(filters?.line || '');
+    const is4LotCheck = filters?.is_4lot_check || '';
     const [perPage, setPerPage] = useState(dies?.per_page || 15);
     const [viewMode, setViewMode] = useState(localStorage.getItem('dies_view_mode') || 'monitoring');
     const searchTimeout = useRef(null);
@@ -46,22 +47,47 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     const isOrangeOrRedStatusSelected = ['orange', 'red'].includes(filters?.status || status);
     const isPpmDoneSelected = (filters?.status || status) === 'ppm';
 
-    const getFlowPpmStatusLabel = (ppmAlertStatus) => {
+    const getFlowPpmStatusLabel = (ppmAlertStatus, ppmAlertStatusLabel) => {
+        if (ppmAlertStatusLabel) {
+            return ppmAlertStatusLabel;
+        }
+
         switch (ppmAlertStatus) {
+            case 'orange_alerted':
+                return 'Orange Alert Sent';
+            case 'lot_date_set':
+                return 'PPIC: Last LOT Date Set';
             case 'ppm_scheduled':
-                return 'MTN Dies - PPM Schedule';
+                return 'MTN Dies: PPM Scheduled';
+            case '4lc_scheduled':
+                return 'MTN Dies: 4 Lot Check Scheduled';
+            case '4lc_approved':
+                return 'PPIC: 4 Lot Check Approved';
             case 'schedule_approved':
-                return 'PPIC - Schedule Approved';
+                return 'PPIC: Schedule Approved';
+            case 'red_alerted':
+                return 'Red Alert Sent - Awaiting Transfer';
             case 'transferred_to_mtn':
                 return 'PROD: Dies Transferred to MTN';
+            case 'transferred_to_mtn_4lc':
+                return 'PROD: 4LC Dies Transferred to MTN';
             case 'ppm_in_progress':
-                return 'PPM In Progress';
+                return 'MTN Dies: PPM In Progress';
+            case '4lc_in_progress':
+                return 'MTN Dies: 4LC In Progress';
             case 'additional_repair':
-                return 'Additional Repair';
+                return 'MTN Dies: Additional Repair Needed';
             case 'ppm_completed':
-                return 'PPM Completed:';
+                return 'PPM Completed - Awaiting Transfer Back';
+            case '4lc_completed':
+                return '4LC Completed - Awaiting Transfer Back';
             default:
-                return '-';
+                return ppmAlertStatus
+                    ? ppmAlertStatus
+                        .split('_')
+                        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ')
+                    : '-';
         }
     };
 
@@ -93,6 +119,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             status: status || undefined,
             ppm_done_date: status === 'ppm' ? (ppmDoneDate || undefined) : undefined,
             line: lineFilter || undefined,
+            is_4lot_check: is4LotCheck || undefined,
             per_page: perPage !== 15 ? perPage : undefined,
             ...overrides,
         };
@@ -101,7 +128,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
             if (!params[key]) delete params[key];
         });
         return params;
-    }, [search, customerId, modelId, status, ppmDoneDate, lineFilter, perPage]);
+    }, [search, customerId, modelId, status, ppmDoneDate, lineFilter, is4LotCheck, perPage]);
 
     // Persist view mode
     const handleViewModeChange = (mode) => {
@@ -111,7 +138,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
 
     // Apply filter with optional overrides (for instant dropdown changes)
     const handleFilter = (overrides = {}) => {
-        router.get(route('dies.index'), buildParams(overrides), {
+        router.get(route('dies.index'), buildParams({ page: 1, ...overrides }), {
             preserveState: true,
             preserveScroll: true,
         });
@@ -168,7 +195,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
     const handlePerPageChange = (value) => {
         const newPerPage = parseInt(value);
         setPerPage(newPerPage);
-        router.get(route('dies.index'), buildParams({ per_page: newPerPage !== 15 ? newPerPage : undefined }), {
+        router.get(route('dies.index'), buildParams({ page: 1, per_page: newPerPage !== 15 ? newPerPage : undefined }), {
             preserveState: true,
             preserveScroll: true,
         });
@@ -1165,7 +1192,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                             {isOrangeOrRedStatusSelected && (
                                             <td className="px-4 py-3 min-w-[230px]">
                                                 <span className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${getFlowPpmStatusClass(die.ppm_alert_status)}`}>
-                                                    {getFlowPpmStatusLabel(die.ppm_alert_status)}
+                                                    {getFlowPpmStatusLabel(die.ppm_alert_status, die.ppm_alert_status_label)}
                                                 </span>
                                             </td>
                                             )}
@@ -1434,7 +1461,7 @@ export default function DiesIndex({ auth, dies, dieChangeLogs, filters, customer
                                         {isOrangeOrRedStatusSelected && (
                                             <td className="px-3 py-2 text-center min-w-[220px]">
                                                 <span className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${getFlowPpmStatusClass(die.ppm_alert_status)}`}>
-                                                    {getFlowPpmStatusLabel(die.ppm_alert_status)}
+                                                    {getFlowPpmStatusLabel(die.ppm_alert_status, die.ppm_alert_status_label)}
                                                 </span>
                                             </td>
                                         )}

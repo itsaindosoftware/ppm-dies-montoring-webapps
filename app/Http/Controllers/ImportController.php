@@ -8,6 +8,7 @@ use App\Exports\PpmScheduleTemplateExport;
 use App\Imports\ProductionLogImport;
 use App\Imports\DiesImport;
 use App\Imports\PpmScheduleImport;
+use App\Models\DieChangeLog;
 use App\Models\ImportLog;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -40,8 +41,28 @@ class ImportController extends Controller
                 ];
             });
 
+        $importProductionChangeLogs = DieChangeLog::with(['user:id,name', 'die:id,part_number,part_name'])
+            ->where('changed_fields->accumulation_stroke->source', 'import_production_log')
+            ->orderByDesc('created_at')
+            ->limit(200)
+            ->get()
+            ->map(function (DieChangeLog $log) {
+                $strokeChange = data_get($log->changed_fields, 'accumulation_stroke', []);
+
+                return [
+                    'id' => $log->id,
+                    'part_number' => $log->part_number ?: $log->die?->part_number,
+                    'part_name' => $log->part_name ?: $log->die?->part_name,
+                    'old_stroke' => $strokeChange['old'] ?? '-',
+                    'new_stroke' => $strokeChange['new'] ?? '-',
+                    'changed_by' => $log->user?->name ?? 'System',
+                    'changed_at' => $log->created_at?->format('d-M-Y H:i:s'),
+                ];
+            });
+
         return Inertia::render('Import/Index', [
             'importLogs' => $importLogs,
+            'importProductionChangeLogs' => $importProductionChangeLogs,
         ]);
     }
 

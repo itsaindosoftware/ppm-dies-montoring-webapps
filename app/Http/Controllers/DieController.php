@@ -51,7 +51,7 @@ class DieController extends Controller
      */
     public function index(Request $request)
     {
-        $filters = $request->only(['customer_id', 'machine_model_id', 'status', 'line', 'search', 'ppm_done_date']);
+        $filters = $request->only(['customer_id', 'machine_model_id', 'status', 'line', 'search', 'ppm_done_date', 'is_4lot_check']);
         $perPage = (int) $request->input('per_page', 15);
         $perPage = in_array($perPage, [10, 15, 25, 50, 100, 200]) ? $perPage : 15;
 
@@ -212,16 +212,38 @@ class DieController extends Controller
      */
     public function ppmForm(Request $request)
     {
-        $filters = $request->only(['ppm_date', 'part_number', 'part_name', 'process_name']);
+        $filters = $request->only(['ppm_date', 'part_number', 'part_name', 'process_name', 'record_type']);
+        $recordType = $filters['record_type'] ?? 'ppm';
 
         $ppmHistories = PpmHistory::query()
             ->with([
-                'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke',
+                'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke,is_4lot_check',
                 'die.customer:id,code,name',
                 'die.machineModel:id,code',
             ])
             ->where('status', 'done')
             ->whereIn('process_type', DieModel::PROCESS_TYPES)
+            ->when($recordType === '4lc', function ($query) {
+                $query->where('maintenance_type', '4lc_maintenance')
+                    ->whereHas('die', function ($dieQuery) {
+                        $dieQuery->where('is_4lot_check', true)
+                            ->whereHas('dieProcesses')
+                            ->whereDoesntHave('dieProcesses', function ($processQuery) {
+                                $processQuery->where(function ($statusQuery) {
+                                    $statusQuery->whereNull('lot_check_status')
+                                        ->orWhere('lot_check_status', '!=', 'completed');
+                                });
+                            });
+                    });
+            }, function ($query) {
+                $query->where('maintenance_type', '!=', '4lc_maintenance')
+                    ->whereHas('die', function ($dieQuery) {
+                        $dieQuery->where(function ($nested) {
+                            $nested->where('is_4lot_check', false)
+                                ->orWhereNull('is_4lot_check');
+                        });
+                    });
+            })
             ->when(!empty($filters['ppm_date']), function ($query) use ($filters) {
                 $query->whereDate('ppm_date', $filters['ppm_date']);
             })
@@ -273,6 +295,7 @@ class DieController extends Controller
                 'die' => [
                     'id' => $die?->id,
                     'encrypted_id' => $die?->encrypted_id,
+                    'is_4lot_check' => (bool) ($die?->is_4lot_check),
                     'part_number' => $die?->part_number,
                     'part_name' => $die?->part_name,
                     'line' => $die?->line,
@@ -437,11 +460,15 @@ class DieController extends Controller
         // are BEFORE MTN creates a schedule, so old schedule data should NOT be shown.
         $schedulingActiveStatuses = [
             'ppm_scheduled',
+            '4lc_scheduled',
             'schedule_approved',
             'transferred_to_mtn',
+            'transferred_to_mtn_4lc',
             'ppm_in_progress',
+            '4lc_in_progress',
             'additional_repair',
             'ppm_completed',
+            '4lc_completed',
         ];
 
         if (in_array($die->ppm_alert_status, $schedulingActiveStatuses)) {
@@ -542,9 +569,16 @@ class DieController extends Controller
                     'ppm_started_at' => $p->ppm_started_at?->format('d-M-Y H:i'),
                     'ppm_completed_at' => $p->ppm_completed_at?->format('d-M-Y H:i'),
                     'completed_by' => $p->completed_by,
+                    'lot_check_status' => $p->lot_check_status,
+                    'lot_check_status_label' => $p->lot_check_status_label,
+                    'lot_check_started_at' => $p->lot_check_started_at?->format('d-M-Y H:i'),
+                    'lot_check_completed_at' => $p->lot_check_completed_at?->format('d-M-Y H:i'),
+                    'lot_check_completed_by' => $p->lot_check_completed_by,
+                    'lot_check_history_id' => $p->lot_check_history_id,
                     'notes' => $p->notes,
                 ]),
                 'ppm_process_progress' => $die->ppm_process_progress,
+                'lot_check_progress' => $die->lot_check_progress,
                 // Remarks
                 'schedule_remark' => $die->schedule_remark,
                 'schedule_change_reason' => $die->schedule_change_reason,
@@ -606,6 +640,7 @@ class DieController extends Controller
 
             // Update only this die's data (including group_name)
             $die->update($validated);
+            $this->syncPpmWorkflowAfterManualStrokeUpdate($die, array_key_exists('accumulation_stroke', $validated));
             $die->refresh();
 
             $changes = $this->buildDieChanges($trackedFields, $beforeValues, $this->extractDieFieldValues($die, $trackedFields));
@@ -624,6 +659,7 @@ class DieController extends Controller
                     $memberBeforeValues = $this->extractDieFieldValues($member, ['accumulation_stroke']);
 
                     $member->update(['accumulation_stroke' => $newAccumulationStroke]);
+                    $this->syncPpmWorkflowAfterManualStrokeUpdate($member, true);
                     $member->refresh();
 
                     $memberChanges = $this->buildDieChanges(
@@ -658,7 +694,7 @@ class DieController extends Controller
         $validated = $request->validate([
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
             'checklist_results' => 'nullable|array',
             'checklist_results.*.item_no' => 'required|integer',
@@ -677,6 +713,40 @@ class DieController extends Controller
 
         return redirect()->back()
             ->with('success', 'PPM recorded successfully. Stroke counter has been reset.');
+    }
+
+    /**
+     * Record 4LC maintenance
+     */
+    public function record4lcMaintenance(Request $request, DieModel $die)
+    {
+        if (!$die->is_4lot_check || !in_array($die->ppm_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', 'additional_repair'])) {
+            return redirect()->back()
+                ->with('error', 'Cannot record 4LC maintenance. Die must be transferred to MTN Dies first.');
+        }
+
+        $validated = $request->validate([
+            'ppm_date' => 'required|date',
+            'pic' => 'required|string|max:100',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
+            'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
+            'checklist_results' => 'nullable|array',
+            'checklist_results.*.item_no' => 'required|integer',
+            'checklist_results.*.description' => 'required|string',
+            'checklist_results.*.result' => 'required|in:normal,unusual',
+            'checklist_results.*.remark' => 'nullable|string',
+            'work_performed' => 'nullable|string',
+            'parts_replaced' => 'nullable|string',
+            'findings' => 'nullable|string',
+            'recommendations' => 'nullable|string',
+            'checked_by' => 'nullable|string|max:100',
+            'approved_by' => 'nullable|string|max:100',
+        ]);
+
+        $this->monitoringService->record4lcMaintenance($die, $validated);
+
+        return redirect()->back()
+            ->with('success', '4LC maintenance recorded successfully.');
     }
 
     /**
@@ -713,6 +783,18 @@ class DieController extends Controller
     }
 
     /**
+     * PPIC: Approve 4 Lot Check Schedule
+     * Flow: MTN Dies creates 4LC schedule → PPIC confirms it
+     */
+    public function approve4LotCheckSchedule(Request $request, DieModel $die)
+    {
+        $this->monitoringService->approve4LotCheckSchedule($die);
+
+        return redirect()->back()
+            ->with('success', '4 Lot Check schedule has been approved by PPIC.');
+    }
+
+    /**
      * Start PPM Processing for the specified die
      * Flow: MTN Dies starts PPM Processing
      * Now supports multi-process type selection
@@ -739,6 +821,33 @@ class DieController extends Controller
 
         return redirect()->back()
             ->with('success', 'PPM Processing has been started.' .
+                (!empty($validated['process_types']) ? ' ' . count($validated['process_types']) . ' processes initialized.' : ''));
+    }
+
+    /**
+     * Start 4LC Processing for the specified die
+     */
+    public function start4lcProcessing(Request $request, DieModel $die)
+    {
+        if (!$die->is_4lot_check || !$die->schedule_approved_at) {
+            return redirect()->back()
+                ->with('error', 'Cannot start 4LC Processing. 4LC schedule must be confirmed by PPIC first.');
+        }
+
+        if ($die->ppm_alert_status !== 'transferred_to_mtn_4lc' || !$die->transferred_at) {
+            return redirect()->back()
+                ->with('error', 'Cannot start 4LC Processing. Die must be transferred by Production to MTN Dies first.');
+        }
+
+        $validated = $request->validate([
+            'process_types' => 'nullable|array',
+            'process_types.*' => 'in:pierce,trim',
+        ]);
+
+        $this->monitoringService->start4lcProcessing($die, $validated['process_types'] ?? []);
+
+        return redirect()->back()
+            ->with('success', '4LC Processing has been started.' .
                 (!empty($validated['process_types']) ? ' ' . count($validated['process_types']) . ' processes initialized.' : ''));
     }
 
@@ -858,7 +967,7 @@ class DieController extends Controller
         $validated = $request->validate([
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'checklist_results' => 'nullable|array',
             'checklist_results.*.item_no' => 'required|integer',
             'checklist_results.*.description' => 'required|string',
@@ -1058,7 +1167,7 @@ class DieController extends Controller
         ]);
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->where('ppm_alert_status', 'ppm_completed')
+            ->whereIn('ppm_alert_status', ['ppm_completed', '4lc_completed'])
             ->get();
 
         if ($dies->isEmpty()) {
@@ -1146,7 +1255,7 @@ class DieController extends Controller
             'die_ids.*' => 'exists:dies,id',
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'checked_by' => 'nullable|string|max:100',
             'approved_by' => 'nullable|string|max:100',
             // Per-die data keyed by die ID
@@ -1328,7 +1437,7 @@ class DieController extends Controller
         $validated = $request->validate([
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
-            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency',
+            'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
             'process_type' => 'nullable|in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
             'checklist_results' => 'nullable|array',
             'checklist_results.*.item_no' => 'required|integer',
@@ -1401,6 +1510,37 @@ class DieController extends Controller
         }
 
         return $values;
+    }
+
+    private function syncPpmWorkflowAfterManualStrokeUpdate(DieModel $die, bool $strokeWasUpdated): void
+    {
+        if (!$strokeWasUpdated) {
+            return;
+        }
+
+        $die->refresh();
+
+        if ($die->ppm_status !== 'green' || $die->ppm_alert_status === null) {
+            return;
+        }
+
+        $die->update([
+            'ppm_alert_status' => null,
+            'red_alerted_at' => null,
+            'ppm_started_at' => null,
+            'ppm_finished_at' => null,
+            'transferred_at' => null,
+            'transferred_by' => null,
+            'transfer_from_location' => null,
+            'transfer_to_location' => null,
+            'ppm_scheduled_date' => null,
+            'ppm_scheduled_by' => null,
+            'schedule_approved_at' => null,
+            'schedule_approved_by' => null,
+            'last_lot_date' => null,
+            'last_lot_date_set_by' => null,
+            'ppm_total_days' => null,
+        ]);
     }
 
     private function buildDieChanges(array $fields, array $beforeValues, array $afterValues): array

@@ -6,6 +6,7 @@ export default function StatsCard({ title, value, icon, color = 'blue', subtitle
         green: 'bg-green-500',
         orange:  'bg-orange-500',
         red: 'bg-red-500',
+        indigo: 'bg-indigo-500',
         gray: 'bg-gray-500',
     };
 
