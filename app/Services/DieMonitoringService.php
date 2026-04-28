@@ -197,15 +197,17 @@ class DieMonitoringService
         // Filter for dies that already have completed PPM history.
         // Source of truth: ppm_histories.status = 'done'.
         if (!empty($filters['status']) && $filters['status'] === 'ppm') {
-            $query->whereHas('ppmHistories', function ($ppmQuery) use ($filters) {
-                $ppmQuery->where('status', 'done');
-
-                if (!empty($filters['ppm_done_date'])) {
+            $donePpmDieIds = PpmHistory::query()
+                ->select('die_id')
+                ->where('status', 'done')
+                ->when(!empty($filters['ppm_done_date']), function ($ppmQuery) use ($filters) {
                     $ppmQuery->whereDate('ppm_date', $filters['ppm_done_date']);
-                }
-            });
+                })
+                ->distinct();
 
-            return $query->paginate($perPage);
+            $query->whereIn('id', $donePpmDieIds);
+
+            return $query->paginate($perPage)->withQueryString();
         }
 
         // Status (green/orange/red) is a computed attribute — must filter in PHP then manually paginate

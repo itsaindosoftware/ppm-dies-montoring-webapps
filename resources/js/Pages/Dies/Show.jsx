@@ -3,7 +3,7 @@ import { Head, Link, useForm, router } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
 import StatusBadge from '@/Components/PPM/StatusBadge';
 import LotProgress from '@/Components/PPM/LotProgress';
-import { PROCESS_TYPES, CHECKLIST_ITEMS, getChecklistItems, getProcessTypeLabel, initializeChecklistResults } from '@/Utils/PpmChecklistData';
+import { FOUR_LOT_CHECK_PROCESS_TYPES, PROCESS_TYPES, getChecklistItems, getProcessTypeLabel, initializeChecklistResults } from '@/Utils/PpmChecklistData';
 import { confirmAction } from '@/Utils/swal';
 
 export default function DieShow({ auth, die }) {
@@ -19,20 +19,7 @@ export default function DieShow({ auth, die }) {
     const [selected4lcProcessTypes, setSelected4lcProcessTypes] = useState([]);
     const [activeProcess, setActiveProcess] = useState(null); // Track which process is being completed
     const fourLcProcessTypes = useMemo(
-        () => PROCESS_TYPES.filter((p) => ['pierce', 'trim'].includes(p.value)),
-        []
-    );
-    const fourLcChecklistItems = useMemo(
-        () => ({
-            pierce: [
-                { no: 1, description_en: 'Check & Polishing Shoulder Punch', description_id: 'Check & Polishing Shoulder Punch' },
-                { no: 2, description_en: 'Check & Polishing Button Dies', description_id: 'Check & Polishing Button Dies' },
-            ],
-            trim: [
-                { no: 1, description_en: 'Check & Polishing Cutting Trim Upper', description_id: 'Check & Polishing Cutting Trim Upper' },
-                { no: 2, description_en: 'Check & Polishing Cutting Trim Lower', description_id: 'Check & Polishing Cutting Trim Lower' },
-            ],
-        }),
+        () => PROCESS_TYPES.filter((p) => FOUR_LOT_CHECK_PROCESS_TYPES.includes(p.value)),
         []
     );
 
@@ -119,25 +106,11 @@ export default function DieShow({ auth, die }) {
         [die.ppmHistories]
     );
 
-    const get4lcChecklistItems = (processType) => fourLcChecklistItems[processType] || [];
-
-    const initialize4lcChecklistResults = (processType) => {
-        const items = get4lcChecklistItems(processType);
-        return items.map((item) => ({
-            item_no: item.no,
-            description: item.description_en,
-            result: 'normal',
-            remark: '',
-        }));
-    };
-
     const maintenanceChecklistItems = useMemo(() => {
-        if (show4lcMaintenanceModal && activeProcess && ['pierce', 'trim'].includes(data.process_type)) {
-            return get4lcChecklistItems(data.process_type);
-        }
-
-        return getChecklistItems(data.process_type);
-    }, [show4lcMaintenanceModal, activeProcess, data.process_type, fourLcChecklistItems]);
+        return getChecklistItems(data.process_type, {
+            is4LotCheck: show4lcMaintenanceModal && activeProcess && FOUR_LOT_CHECK_PROCESS_TYPES.includes(data.process_type),
+        });
+    }, [show4lcMaintenanceModal, activeProcess, data.process_type]);
 
     // Update checklist when process_type changes
     useEffect(() => {
@@ -146,11 +119,9 @@ export default function DieShow({ auth, die }) {
             return;
         }
 
-        if (show4lcMaintenanceModal && activeProcess && ['pierce', 'trim'].includes(data.process_type)) {
-            setData('checklist_results', initialize4lcChecklistResults(data.process_type));
-        } else {
-            setData('checklist_results', initializeChecklistResults(data.process_type));
-        }
+        setData('checklist_results', initializeChecklistResults(data.process_type, {
+            is4LotCheck: show4lcMaintenanceModal && activeProcess && FOUR_LOT_CHECK_PROCESS_TYPES.includes(data.process_type),
+        }));
     }, [data.process_type, show4lcMaintenanceModal, activeProcess]);
 
     /* Previous auto-select 4LC modal behavior kept here for reference.
@@ -1071,7 +1042,7 @@ export default function DieShow({ auth, die }) {
                                                 className={`h-3 rounded-full transition-all ${
                                                     die.lot_check_progress.all_completed ? 'bg-green-500' : 'bg-indigo-500'
                                                 }`}
-                                                style={{ width: `${die.lot_check_progress.percentage}%` }}
+                                                style={{ width: `${die.lot_check_progress.percentage}%` }} 
                                             ></div>
                                         </div>
                                     </div>

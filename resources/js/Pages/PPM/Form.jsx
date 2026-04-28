@@ -8,6 +8,7 @@ import { confirmDialog } from '@/Utils/swal';
 
 export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const [showModal, setShowModal] = useState(true);
+    const [recordType, setRecordType] = useState(filters?.record_type || 'ppm');
     const [ppmDate, setPpmDate] = useState(filters?.ppm_date || '');
     const [partNumber, setPartNumber] = useState(filters?.part_number || '');
     const [partName, setPartName] = useState(filters?.part_name || '');
@@ -38,6 +39,22 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const getHistoryTime = (history) => {
         const timestamp = history?.created_at ? new Date(history.created_at).getTime() : 0;
         return Number.isNaN(timestamp) ? 0 : timestamp;
+    };
+
+    const isFourLotHistory = (history) => Boolean(history?.die?.is_4lot_check);
+
+    const getChecklistTranslation = (history, itemNo, processType = history?.process_type) => {
+        if (!processType || !itemNo) {
+            return '-';
+        }
+
+        const templateItems = getChecklistItems(processType, {
+            is4LotCheck: isFourLotHistory(history),
+            maintenanceType: history?.maintenance_type,
+        });
+        const found = templateItems.find((templateItem) => Number(templateItem.no) === Number(itemNo));
+
+        return found?.description_id || '-';
     };
 
     const histories = (ppmHistories?.data || []).filter((history) => {
@@ -105,8 +122,13 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         setActiveProcessType(firstHistory?.process_type || '');
     }, [ppmHistories?.data]);
 
+    useEffect(() => {
+        setRecordType(filters?.record_type || 'ppm');
+    }, [filters?.record_type]);
+
     const applyFilters = (overrides = {}) => {
         const params = {
+            record_type: overrides.record_type ?? recordType ?? 'ppm',
             ppm_date: ppmDate || undefined,
             part_number: partNumber || undefined,
             part_name: partName || undefined,
@@ -145,7 +167,27 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         setPartNumber('');
         setPartName('');
         setProcessName('');
-        router.get(route('ppm-form.index'));
+        router.get(route('ppm-form.index'), {
+            record_type: recordType || 'ppm',
+        });
+    };
+
+    const handleRecordTypeChange = (nextRecordType) => {
+        if (nextRecordType === recordType) {
+            return;
+        }
+
+        setRecordType(nextRecordType);
+        router.get(route('ppm-form.index'), {
+            record_type: nextRecordType,
+            ppm_date: ppmDate || undefined,
+            part_number: partNumber || undefined,
+            part_name: partName || undefined,
+            process_name: processName || undefined,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
     };
 
     const activeDieGroup = dieGroups.find((group) => group.dieId === activeDieId) || dieGroups[0] || null;
@@ -241,17 +283,6 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     const fromResult = ppmHistories?.from || 0;
     const toResult = ppmHistories?.to || 0;
     const totalResults = ppmHistories?.total || histories.length;
-
-    const getChecklistTranslation = (processType, itemNo) => {
-        if (!processType || !itemNo) {
-            return '-';
-        }
-
-        const templateItems = getChecklistItems(processType);
-        const found = templateItems.find((templateItem) => Number(templateItem.no) === Number(itemNo));
-
-        return found?.description_id || '-';
-    };
 
     const handleCloseModal = () => {
         setShowModal(false);
@@ -480,13 +511,17 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
 
     const filledChecklistCount = (editForm.checklist_results || []).filter((item) => item?.result).length;
     const totalChecklistCount = (editForm.checklist_results || []).length;
+    const activeHistoryIs4lc = isFourLotHistory(activeHistory);
+    const pageTitle = recordType === '4lc' ? '4 Lot Check Maintenance Form' : 'PPM Form';
+    const dataSectionTitle = recordType === '4lc' ? 'Data 4 Lot Check Maintenance' : 'Data PPM Done';
+    const historyLabel = recordType === '4lc' ? '4 Lot Check maintenance history' : 'PPM history';
 
     return (
         <AppLayout
             user={auth.user}
-            header={<h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">PPM Form</h2>}
+            header={<h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{pageTitle}</h2>}
         >
-            <Head title="PPM Form" />
+            <Head title={pageTitle} />
 
             <div className="py-6 px-6">
                 {showModal && (
@@ -656,7 +691,31 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                             </div>
 
                             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 print:hidden">
-                                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Data PPM Done</div>
+                                <div className="flex flex-wrap items-center gap-2 mb-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRecordTypeChange('ppm')}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                                            recordType === 'ppm'
+                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        PPM Done
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRecordTypeChange('4lc')}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                                            recordType === '4lc'
+                                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        4 Lot Check Maintenance
+                                    </button>
+                                </div>
+                                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">{dataSectionTitle}</div>
                                 {processTabs.length === 0 && (
                                     <div className="text-sm text-gray-500 dark:text-gray-400">Data tidak ditemukan.</div>
                                 )}
@@ -769,8 +828,9 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                     </tbody>
                                                 </table>
                                             </div>
-                                        </div>
+                                                    <span className="text-gray-500">Maintenance:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.maintenance_type || '-'}</p></div>
 
+                                                <div><span className="text-gray-500">Category:</span><p className={`font-semibold ${activeHistoryIs4lc ? 'text-indigo-600 dark:text-indigo-300' : 'text-blue-600 dark:text-blue-300'}`}>{activeHistoryIs4lc ? '4 Lot Check Maintenance' : 'PPM Maintenance'}</p></div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
                                                 <p className="text-xs font-semibold text-gray-500 mb-1">Work Performed</p>
@@ -883,7 +943,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                         <td className="text-center">{item?.item_no || index + 1}</td>
                                                         <td>
                                                             <div>{item?.description || '-'}</div>
-                                                            <div className="text-[8px]">{item ? getChecklistTranslation(activeHistory?.process_type, item.item_no) : '-'}</div>
+                                                            <div className="text-[8px]">{item ? getChecklistTranslation(activeHistory, item.item_no) : '-'}</div>
                                                         </td>
                                                         <td className="text-center align-middle">
                                                             <span className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10px]">
@@ -991,7 +1051,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
 
                                     <div className="flex flex-col gap-2 text-xs text-gray-500 dark:text-gray-400 md:flex-row md:items-center md:justify-between">
                                         <div>
-                                            Show {fromResult} - {toResult} of {totalResults} PPM history
+                                            Show {fromResult} - {toResult} of {totalResults} {historyLabel}
                                         </div>
                                         <div>
                                             Page {currentPage} of {lastPage}
@@ -1257,7 +1317,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                                         <td className="px-3 py-2 align-top">
                                                                             <p className="text-sm text-gray-900 dark:text-gray-100">{item.description || '-'}</p>
                                                                             <p className="text-xs text-gray-500 dark:text-gray-400 italic">
-                                                                                {getChecklistTranslation(editForm.process_type, item.item_no)}
+                                                                                {getChecklistTranslation(activeHistory, item.item_no, editForm.process_type)}
                                                                             </p>
                                                                         </td>
                                                                         <td className="px-2 py-2 text-center align-top">

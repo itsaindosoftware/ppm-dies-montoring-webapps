@@ -4,6 +4,8 @@
 
     Setiap Push Ke Server dan Pull Dari Server, harus backup db dulu
 
+    71391-I6000
+
     baru sampai 4 Lot Check Satu Group Name yang ambigu
 
     yang ini ditunda dulu  (nanti lanjut hari senin)
@@ -21,6 +23,9 @@ scheduled in
 fitur clear 
 
 utf8mb4_general_ci
+
+composer install
+php artisan key:generate
 
 password
 adminsakti

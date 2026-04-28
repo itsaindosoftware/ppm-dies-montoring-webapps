@@ -2,6 +2,7 @@
 
 namespace App\Imports;
 
+use App\Models\DieChangeLog;
 use App\Models\DieModel;
 use App\Models\ProductionLog;
 use App\Models\User;
@@ -313,12 +314,15 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         $newStroke = $currentStroke + $outputQty;
 
         foreach ($groupedDies as $groupedDie) {
+            $beforeStroke = (int) ($groupedDie->accumulation_stroke ?? 0);
             $previousStatus = $groupedDie->ppm_status;
 
             // Import production output only contributes to accumulation_stroke.
             $groupedDie->update([
                 'accumulation_stroke' => $newStroke,
             ]);
+
+            $this->storeAccumulationStrokeChangeLog($groupedDie, $beforeStroke, $newStroke);
 
             $groupedDie->refresh();
             $groupedDie->load(['machineModel.tonnageStandard', 'customer']);
@@ -333,6 +337,20 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
 
     protected function getGroupedDies(DieModel $seedDie, ?string $groupKey)
     {
+        if (!empty($seedDie->group_name)) {
+            $groupedByName = DieModel::query()
+                ->where('group_name', $seedDie->group_name)
+                ->get();
+
+            if ($groupedByName->isNotEmpty()) {
+                if ($groupedByName->contains(fn(DieModel $candidate) => $candidate->id === $seedDie->id)) {
+                    return $groupedByName->values();
+                }
+
+                return $groupedByName->push($seedDie)->unique('id')->values();
+            }
+        }
+
         if (!$groupKey) {
             return collect([$seedDie]);
         }
@@ -357,6 +375,27 @@ class ProductionLogImport implements ToModel, WithHeadingRow, WithValidation, Wi
         }
 
         return $groupedDies->push($seedDie)->unique('id')->values();
+    }
+
+    protected function storeAccumulationStrokeChangeLog(DieModel $die, int $beforeStroke, int $afterStroke): void
+    {
+        if ($beforeStroke === $afterStroke) {
+            return;
+        }
+
+        DieChangeLog::create([
+            'die_id' => $die->id,
+            'user_id' => auth()->id(),
+            'part_number' => $die->part_number,
+            'part_name' => $die->part_name,
+            'changed_fields' => [
+                'accumulation_stroke' => [
+                    'old' => number_format($beforeStroke),
+                    'new' => number_format($afterStroke),
+                    'source' => 'import_production_log',
+                ],
+            ],
+        ]);
     }
 
     public function getImportedCount(): int

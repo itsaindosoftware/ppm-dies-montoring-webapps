@@ -212,16 +212,38 @@ class DieController extends Controller
      */
     public function ppmForm(Request $request)
     {
-        $filters = $request->only(['ppm_date', 'part_number', 'part_name', 'process_name']);
+        $filters = $request->only(['ppm_date', 'part_number', 'part_name', 'process_name', 'record_type']);
+        $recordType = $filters['record_type'] ?? 'ppm';
 
         $ppmHistories = PpmHistory::query()
             ->with([
-                'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke',
+                'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke,is_4lot_check',
                 'die.customer:id,code,name',
                 'die.machineModel:id,code',
             ])
             ->where('status', 'done')
             ->whereIn('process_type', DieModel::PROCESS_TYPES)
+            ->when($recordType === '4lc', function ($query) {
+                $query->where('maintenance_type', '4lc_maintenance')
+                    ->whereHas('die', function ($dieQuery) {
+                        $dieQuery->where('is_4lot_check', true)
+                            ->whereHas('dieProcesses')
+                            ->whereDoesntHave('dieProcesses', function ($processQuery) {
+                                $processQuery->where(function ($statusQuery) {
+                                    $statusQuery->whereNull('lot_check_status')
+                                        ->orWhere('lot_check_status', '!=', 'completed');
+                                });
+                            });
+                    });
+            }, function ($query) {
+                $query->where('maintenance_type', '!=', '4lc_maintenance')
+                    ->whereHas('die', function ($dieQuery) {
+                        $dieQuery->where(function ($nested) {
+                            $nested->where('is_4lot_check', false)
+                                ->orWhereNull('is_4lot_check');
+                        });
+                    });
+            })
             ->when(!empty($filters['ppm_date']), function ($query) use ($filters) {
                 $query->whereDate('ppm_date', $filters['ppm_date']);
             })
@@ -273,6 +295,7 @@ class DieController extends Controller
                 'die' => [
                     'id' => $die?->id,
                     'encrypted_id' => $die?->encrypted_id,
+                    'is_4lot_check' => (bool) ($die?->is_4lot_check),
                     'part_number' => $die?->part_number,
                     'part_name' => $die?->part_name,
                     'line' => $die?->line,
@@ -617,6 +640,7 @@ class DieController extends Controller
 
             // Update only this die's data (including group_name)
             $die->update($validated);
+            $this->syncPpmWorkflowAfterManualStrokeUpdate($die, array_key_exists('accumulation_stroke', $validated));
             $die->refresh();
 
             $changes = $this->buildDieChanges($trackedFields, $beforeValues, $this->extractDieFieldValues($die, $trackedFields));
@@ -635,6 +659,7 @@ class DieController extends Controller
                     $memberBeforeValues = $this->extractDieFieldValues($member, ['accumulation_stroke']);
 
                     $member->update(['accumulation_stroke' => $newAccumulationStroke]);
+                    $this->syncPpmWorkflowAfterManualStrokeUpdate($member, true);
                     $member->refresh();
 
                     $memberChanges = $this->buildDieChanges(
@@ -1485,6 +1510,37 @@ class DieController extends Controller
         }
 
         return $values;
+    }
+
+    private function syncPpmWorkflowAfterManualStrokeUpdate(DieModel $die, bool $strokeWasUpdated): void
+    {
+        if (!$strokeWasUpdated) {
+            return;
+        }
+
+        $die->refresh();
+
+        if ($die->ppm_status !== 'green' || $die->ppm_alert_status === null) {
+            return;
+        }
+
+        $die->update([
+            'ppm_alert_status' => null,
+            'red_alerted_at' => null,
+            'ppm_started_at' => null,
+            'ppm_finished_at' => null,
+            'transferred_at' => null,
+            'transferred_by' => null,
+            'transfer_from_location' => null,
+            'transfer_to_location' => null,
+            'ppm_scheduled_date' => null,
+            'ppm_scheduled_by' => null,
+            'schedule_approved_at' => null,
+            'schedule_approved_by' => null,
+            'last_lot_date' => null,
+            'last_lot_date_set_by' => null,
+            'ppm_total_days' => null,
+        ]);
     }
 
     private function buildDieChanges(array $fields, array $beforeValues, array $afterValues): array
