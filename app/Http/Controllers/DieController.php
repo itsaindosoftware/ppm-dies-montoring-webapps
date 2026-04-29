@@ -226,7 +226,18 @@ class DieController extends Controller
             ->when($recordType === '4lc', function ($query) {
                 $query->where('maintenance_type', '4lc_maintenance')
                     ->whereHas('die', function ($dieQuery) {
-                        $dieQuery->where('is_4lot_check', true)
+                        $dieQuery->where(function ($eligibilityQuery) {
+                            $eligibilityQuery->where('is_4lot_check', true)
+                                ->orWhere(function ($groupQuery) {
+                                    $groupQuery->whereNotNull('group_name')
+                                        ->where('group_name', '!=', '')
+                                        ->whereIn('group_name', DieModel::query()
+                                            ->where('is_4lot_check', true)
+                                            ->whereNotNull('group_name')
+                                            ->where('group_name', '!=', '')
+                                            ->select('group_name'));
+                                });
+                        })
                             ->whereHas('dieProcesses')
                             ->whereDoesntHave('dieProcesses', function ($processQuery) {
                                 $processQuery->where(function ($statusQuery) {
@@ -449,6 +460,8 @@ class DieController extends Controller
             'latestProductionLog',
         ]);
 
+        $isGroup4LotFlow = $this->isGroup4LotFlow($die);
+
         // Build schedule info: prioritize dies table fields, fallback to ppm_schedules table
         // Only look up fallback schedule when PPM flow is in scheduling phase
         // (NOT during red_alerted or earlier — those are from previous cycles)
@@ -557,6 +570,7 @@ class DieController extends Controller
                 'ppm_finished_at' => $die->ppm_finished_at?->format('d-M-Y H:i'),
                 'ppm_total_days' => $die->ppm_total_days,
                 'is_4lot_check' => $die->is_4lot_check,
+                'is_group_4lot_flow' => $isGroup4LotFlow,
                 // Multi-process PPM
                 'die_processes' => $die->dieProcesses->map(fn($p) => [
                     'id' => $p->id,
@@ -720,7 +734,7 @@ class DieController extends Controller
      */
     public function record4lcMaintenance(Request $request, DieModel $die)
     {
-        if (!$die->is_4lot_check || !in_array($die->ppm_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', 'additional_repair'])) {
+        if (!$this->isGroup4LotFlow($die) || !in_array($die->ppm_alert_status, ['transferred_to_mtn_4lc', 'transferred_to_mtn', '4lc_in_progress', 'additional_repair'], true)) {
             return redirect()->back()
                 ->with('error', 'Cannot record 4LC maintenance. Die must be transferred to MTN Dies first.');
         }
@@ -829,12 +843,14 @@ class DieController extends Controller
      */
     public function start4lcProcessing(Request $request, DieModel $die)
     {
-        if (!$die->is_4lot_check || !$die->schedule_approved_at) {
+        $isGroup4LotFlow = $this->isGroup4LotFlow($die);
+
+        if (!$isGroup4LotFlow || !$die->schedule_approved_at) {
             return redirect()->back()
                 ->with('error', 'Cannot start 4LC Processing. 4LC schedule must be confirmed by PPIC first.');
         }
 
-        if ($die->ppm_alert_status !== 'transferred_to_mtn_4lc' || !$die->transferred_at) {
+        if (!in_array($die->ppm_alert_status, ['transferred_to_mtn_4lc', 'transferred_to_mtn'], true) || !$die->transferred_at) {
             return redirect()->back()
                 ->with('error', 'Cannot start 4LC Processing. Die must be transferred by Production to MTN Dies first.');
         }
@@ -849,6 +865,22 @@ class DieController extends Controller
         return redirect()->back()
             ->with('success', '4LC Processing has been started.' .
                 (!empty($validated['process_types']) ? ' ' . count($validated['process_types']) . ' processes initialized.' : ''));
+    }
+
+    private function isGroup4LotFlow(DieModel $die): bool
+    {
+        if ((bool) $die->is_4lot_check) {
+            return true;
+        }
+
+        if (!$die->group_name) {
+            return false;
+        }
+
+        return DieModel::query()
+            ->where('group_name', $die->group_name)
+            ->where('is_4lot_check', true)
+            ->exists();
     }
 
     /**

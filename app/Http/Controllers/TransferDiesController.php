@@ -45,7 +45,8 @@ class TransferDiesController extends Controller
                     return false;
                 }
 
-                $is4LotReady = $die->is_4lot_check && $die->ppm_alert_status === '4lc_approved';
+                // $is4LotReady = $die->is_4lot_check && $die->ppm_alert_status === '4lc_approved';
+                $is4LotReady = $die->ppm_alert_status === '4lc_approved';
 
                 return $die->ppm_status === 'red' || $is4LotReady;
             })
@@ -166,7 +167,7 @@ class TransferDiesController extends Controller
                     return false;
                 }
 
-                $is4LotReady = $die->is_4lot_check && $die->ppm_alert_status === '4lc_approved';
+                $is4LotReady = $die->ppm_alert_status === '4lc_approved';
 
                 return $die->ppm_status === 'red' || $is4LotReady;
             })

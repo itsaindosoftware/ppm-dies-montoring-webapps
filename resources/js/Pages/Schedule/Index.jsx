@@ -113,7 +113,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
     ) || 0;
 
     const lot4CheckCount = scheduleData?.reduce((sum, g) =>
-        sum + (g.dies?.filter(d => Number(d.is_4lot_check) === 1).length || 0), 0
+        sum + (g.dies?.filter(d => Number(d.is_qualified_4lot_check) === 1).length || 0), 0
     ) || 0;
 
     const hasVisibleScheduleFilters = alreadyScheduledCount > 0 || statusScheduledCount > 0 || lot4CheckCount > 0 || (isMtnDies && needsScheduleCount > 0);
@@ -128,7 +128,7 @@ export default function ScheduleIndex({ auth, year, scheduleData, customers, ton
                 scheduleFilter === 'needs_schedule' ? d.needs_scheduling
                 : scheduleFilter === 'already_scheduled' ? hasOnlyScheduledInStatus(d)
                 : scheduleFilter === 'status_scheduled' ? hasDoneStatus(d)
-                : scheduleFilter === 'lot4_check' ? Number(d.is_4lot_check) === 1
+                : scheduleFilter === 'lot4_check' ? Number(d.is_qualified_4lot_check) === 1
                 : true
             ) || [],
         })).filter(group => group.dies.length > 0);

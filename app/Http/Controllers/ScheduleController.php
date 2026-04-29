@@ -50,6 +50,9 @@ class ScheduleController extends Controller
         $customers = Customer::active()->get(['id', 'code', 'name']);
         $tonnages = TonnageStandard::all(['id', 'tonnage', 'grade', 'standard_stroke']);
         $doneHistoryDatesByDie = $this->getDoneHistoryDatesByDie($year, $month, $selectedDate, $customerId, $tonnageId);
+        $qualified4LotDieIdMap = $this->monitoringService
+            ->getQualified4LotDieIds()
+            ->flip();
 
         // Build query
         $query = DieModel::with([
@@ -124,7 +127,7 @@ class ScheduleController extends Controller
         $dies = $query->orderBy('part_number')->get();
 
         // Transform data for calendar view
-        $scheduleData = $this->transformToScheduleData($dies, $year, $doneHistoryDatesByDie);
+        $scheduleData = $this->transformToScheduleData($dies, $year, $doneHistoryDatesByDie, $qualified4LotDieIdMap);
 
         return Inertia::render('Schedule/Index', [
             'year' => (int) $year,
@@ -143,7 +146,7 @@ class ScheduleController extends Controller
     /**
      * Transform dies data to schedule format
      */
-    protected function transformToScheduleData($dies, $year, array $doneHistoryDatesByDie = []): array
+    protected function transformToScheduleData($dies, $year, array $doneHistoryDatesByDie = [], $qualified4LotDieIdMap = null): array
     {
         $grouped = [];
         $totalStrokeAtPpmByPartNumber = $this->calculateTotalStrokeAtPpmByPartNumber($dies);
@@ -220,6 +223,7 @@ class ScheduleController extends Controller
                 'part_number' => $die->part_number,
                 'part_name' => $die->part_name,
                 'is_4lot_check' => (int) ($die->is_4lot_check ?? 0),
+                'is_qualified_4lot_check' => (int) (($qualified4LotDieIdMap && isset($qualified4LotDieIdMap[$die->id])) ? 1 : 0),
                 'model' => $die->machineModel?->code,
                 'total_die' => $die->qty_die,
                 'accumulation_stroke' => $die->accumulation_stroke,

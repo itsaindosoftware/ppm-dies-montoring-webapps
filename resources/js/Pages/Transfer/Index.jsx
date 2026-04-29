@@ -64,7 +64,8 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
         router.post(route('transfer-dies.to-production', die.encrypted_id), {});
     };
 
-    const is4LotReady = (die) => die.is_4lot_check && die.ppm_alert_status === '4lc_approved';
+    // const is4LotReady = (die) => die.is_4lot_check && die.ppm_alert_status === '4lc_approved';
+      const is4LotReady = (die) =>  die.ppm_alert_status === '4lc_approved';
 
     const isProduction = auth.user.role === 'production' || auth.user.role === 'admin';
     const isMtnDies = auth.user.role === 'mtn_dies' || auth.user.role === 'admin';

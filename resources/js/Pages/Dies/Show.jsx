@@ -28,6 +28,7 @@ export default function DieShow({ auth, die }) {
     const isPpic = ['admin', 'ppic'].includes(auth.user.role);
     const isProd = ['admin', 'production'].includes(auth.user.role);
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
+    const isGroup4LotFlow = Boolean(die.is_group_4lot_flow || die.ppm_alert_status?.includes('4lc'));
     const isStartPpmBlocked =
     !die.schedule_approved_at ||
     die.ppm_alert_status !== 'transferred_to_mtn' ||
@@ -35,12 +36,12 @@ export default function DieShow({ auth, die }) {
 
     const isStart4lcBlocked =
     !die.schedule_approved_at ||
-    die.ppm_alert_status !== 'transferred_to_mtn_4lc' ||
+    !['transferred_to_mtn_4lc', 'transferred_to_mtn'].includes(die.ppm_alert_status) ||
     !die.transferred_at;
 
     // Check if multi-process PPM is active (has processes that are not all completed)
     const hasActiveProcesses = die.die_processes && die.die_processes.length > 0 &&
-        !(die.is_4lot_check ? die.lot_check_progress?.all_completed : die.ppm_process_progress?.all_completed);
+        !(isGroup4LotFlow ? die.lot_check_progress?.all_completed : die.ppm_process_progress?.all_completed);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         ppm_date: new Date().toISOString().split('T')[0],
@@ -68,30 +69,40 @@ export default function DieShow({ auth, die }) {
 
     const canRecordPpm =
         isMtnDies &&
-        !die.is_4lot_check &&
+        !isGroup4LotFlow &&
         die.ppm_status === 'red' &&
         hasRequiredPpmFlowMilestones &&
         isRecordPpmAlertStatusAllowed;
 
     const canRecord4lcMaintenance =
         isMtnDies &&
-        !!die.is_4lot_check &&
         ['transferred_to_mtn_4lc', '4lc_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
+
+    // const canConfirm4LotCheck =
+    //     isPpic &&
+    //     !!die.is_4lot_check &&
+    //     !!die.ppm_scheduled_date &&
+    //     die.ppm_alert_status === '4lc_scheduled';
 
     const canConfirm4LotCheck =
         isPpic &&
-        !!die.is_4lot_check &&
         !!die.ppm_scheduled_date &&
         die.ppm_alert_status === '4lc_scheduled';
 
-    const canConfirmRegularSchedule =
+    // const canConfirmRegularSchedule =
+    //     isPpic &&
+    //     !die.is_4lot_check &&
+    //     !!die.ppm_scheduled_date &&
+    //     !['schedule_approved', 'red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status);
+
+      const canConfirmRegularSchedule =
         isPpic &&
-        !die.is_4lot_check &&
+                !isGroup4LotFlow &&
         !!die.ppm_scheduled_date &&
         !['schedule_approved', 'red_alerted', 'transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status);
     // const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
-    const canStartPpmProcessing = isMtnDies && !die.is_4lot_check && !isStartPpmBlocked;
-    const canStart4lcProcessing = isMtnDies && !!die.is_4lot_check && !isStart4lcBlocked;
+        const canStartPpmProcessing = isMtnDies && !isGroup4LotFlow && !isStartPpmBlocked;
+        const canStart4lcProcessing = isMtnDies && isGroup4LotFlow && !isStart4lcBlocked;
     const ppmHistoryEntries = useMemo(
         () => (die.ppmHistories || []).filter((history) =>
             history?.status === 'done' && history?.maintenance_type !== '4lc_maintenance'
@@ -256,7 +267,7 @@ export default function DieShow({ auth, die }) {
             pic: auth.user.name,
             maintenance_type: '4lc_maintenance',
             process_type: proc.process_type,
-            checklist_results: initialize4lcChecklistResults(proc.process_type),
+            checklist_results: initializeChecklistResults(proc.process_type),
             work_performed: '',
             parts_replaced: '',
             findings: '',
@@ -469,7 +480,7 @@ export default function DieShow({ auth, die }) {
                             </>
                         )}
                         {/* PPIC: Set Next LOT Date */}
-                        {isPpic && ['orange', 'red'].includes(die.ppm_status) && !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
+                        {isPpic && ['orange', 'red'].includes(die.ppm_status) && !die.ppm_alert_status?.includes('4lc') && !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
                             <button
                                 onClick={() => setShowLotDateModal(true)}
                                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
@@ -478,7 +489,7 @@ export default function DieShow({ auth, die }) {
                             </button>
                         )}
                         {/* PPIC: Confirm PPM Schedule */}
-                        {canConfirmRegularSchedule && (
+                        {canConfirmRegularSchedule && !die.ppm_alert_status?.includes('4lc') && (
                             <button
                                 onClick={async () => {
                                     const ok = await confirmAction({
@@ -704,7 +715,7 @@ export default function DieShow({ auth, die }) {
                         </div>
 
                         {/* PPM Flow Status Card - only show when PPM flow is actives */}
-                        {!die.is_4lot_check && die.ppm_alert_status && (
+                        {die.ppm_alert_status && !die.ppm_alert_status.includes('4lc') && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     📋 PPM Flow Status
@@ -742,7 +753,7 @@ export default function DieShow({ auth, die }) {
                                     )}
 
                                     {/* MTN Dies: PPM Scheduled Info */}
-                                    {die.ppm_scheduled_date && !die.is_4lot_check && (
+                                    {die.ppm_scheduled_date && (
                                         <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                                             <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase mb-1">
                                                 🗓️ MTN Dies - PPM Schedule
@@ -759,7 +770,7 @@ export default function DieShow({ auth, die }) {
                                     )}
 
                                     {/* PPIC: Schedule Approved Info */}
-                                    {die.schedule_approved_at && !die.is_4lot_check && (
+                                    {die.schedule_approved_at && (
                                         <div className="p-3 bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg">
                                             <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 uppercase mb-1">
                                                 ✅ PPIC - Schedule Approved
@@ -852,7 +863,7 @@ export default function DieShow({ auth, die }) {
                             </div>
                         )}
 
-                        {die.is_4lot_check && die.ppm_alert_status && (
+                        {die.ppm_alert_status?.includes('4lc') && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     🟣 4 Lot Check Flow Status
@@ -930,7 +941,7 @@ export default function DieShow({ auth, die }) {
                         )}
 
                         {/* Multi-Process PPM Progress Card, kalau sudah isi start ppm processing, muncul ini */}
-                        {!die.is_4lot_check && die.die_processes && die.die_processes.length > 0 && (
+                        {!isGroup4LotFlow && die.die_processes && die.die_processes.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     ⚙️ PPM Process Progress
@@ -1021,7 +1032,7 @@ export default function DieShow({ auth, die }) {
                         )}
 
                         {/* Multi-Process 4LC Progress Card */}
-                        {die.is_4lot_check && die.die_processes && die.die_processes.length > 0 && (
+                        {isGroup4LotFlow && die.die_processes && die.die_processes.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     ⚙️ 4LC Process Progress
@@ -1392,7 +1403,7 @@ export default function DieShow({ auth, die }) {
                             </div>
 
                             {/* PPM Completed Info */}
-                            {die.ppm_count > 0 && (
+                            {die.ppm_count > 0 && (!isGroup4LotFlow || !die.lot_check_progress?.all_completed) && (
                                 <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                                     <p className="text-green-700 dark:text-green-300 font-semibold text-sm">
                                         ✅ PPM Completed: {die.ppm_count}x
@@ -1464,7 +1475,7 @@ export default function DieShow({ auth, die }) {
                         </div>
 
                         {/* 4 Lot Check History */}
-                        {die.is_4lot_check && die.lot_check_progress?.all_completed && (
+                        {isGroup4LotFlow && die.lot_check_progress?.all_completed && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     ✅ 4 Lot Check History
