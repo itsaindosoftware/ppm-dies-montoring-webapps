@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 // s
 
@@ -224,7 +225,16 @@ class DieController extends Controller
             ->where('status', 'done')
             ->whereIn('process_type', DieModel::PROCESS_TYPES)
             ->when($recordType === '4lc', function ($query) {
+                $completed4lcDieIds = PpmHistory::query()
+                    ->select('die_id')
+                    ->where('status', 'done')
+                    ->where('maintenance_type', '4lc_maintenance')
+                    ->whereIn('process_type', ['pierce', 'trim'])
+                    ->groupBy('die_id')
+                    ->havingRaw('COUNT(DISTINCT process_type) = 2');
+
                 $query->where('maintenance_type', '4lc_maintenance')
+                    ->whereIn('die_id', $completed4lcDieIds)
                     ->whereHas('die', function ($dieQuery) {
                         $dieQuery->where(function ($eligibilityQuery) {
                             $eligibilityQuery->where('is_4lot_check', true)
@@ -237,14 +247,7 @@ class DieController extends Controller
                                             ->where('group_name', '!=', '')
                                             ->select('group_name'));
                                 });
-                        })
-                            ->whereHas('dieProcesses')
-                            ->whereDoesntHave('dieProcesses', function ($processQuery) {
-                                $processQuery->where(function ($statusQuery) {
-                                    $statusQuery->whereNull('lot_check_status')
-                                        ->orWhere('lot_check_status', '!=', 'completed');
-                                });
-                            });
+                        });
                     });
             }, function ($query) {
                 $query->where('maintenance_type', '!=', '4lc_maintenance')
@@ -282,7 +285,14 @@ class DieController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $ppmHistories->through(function (PpmHistory $history) {
+        $latest4LotCheckDatesByDie = PpmHistory::query()
+            ->selectRaw('die_id, MAX(ppm_date) as latest_4lc_date')
+            ->whereIn('die_id', $ppmHistories->getCollection()->pluck('die_id')->filter()->unique()->all())
+            ->where('maintenance_type', '4lc_maintenance')
+            ->groupBy('die_id')
+            ->pluck('latest_4lc_date', 'die_id');
+
+        $ppmHistories->through(function (PpmHistory $history) use ($latest4LotCheckDatesByDie) {
             $die = $history->die;
 
             return [
@@ -303,6 +313,9 @@ class DieController extends Controller
                 'stroke_at_ppm' => $history->stroke_at_ppm,
                 'ppm_number' => $history->ppm_number,
                 'created_at' => $history->created_at?->toIso8601String(),
+                'latest_4lc_date' => $history->die_id && isset($latest4LotCheckDatesByDie[$history->die_id])
+                    ? Carbon::parse($latest4LotCheckDatesByDie[$history->die_id])->toDateString()
+                    : null,
                 'die' => [
                     'id' => $die?->id,
                     'encrypted_id' => $die?->encrypted_id,
@@ -852,14 +865,11 @@ class DieController extends Controller
                 ->with('error', 'Cannot start PPM Processing. PPM schedule must be confirmed by PPIC first.');
         }
 
-        // Strict separation: this endpoint handles PPM flow only.
-        if (in_array($die->lot4_alert_status, ['4lc_in_progress', '4lc_additional_repair', '4lc_completed'], true)) {
-            return redirect()->back()
-                ->with('error', 'Cannot start PPM Processing from 4LC flow. Use Start 4LC Processing.');
-        }
-
         // ketika jadwal sudah dikonfirmasi tapi bagian production belum ditransfer ke MTN Dies, maka tidak bisa mulai ppm processing
-        if ($die->ppm_alert_status !== 'transferred_to_mtn' || !$die->transferred_at) {
+        $isTransferredForPpmFlow = $die->ppm_alert_status === 'transferred_to_mtn'
+            || in_array((string) $die->lot4_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair', '4lc_completed'], true);
+
+        if (!$isTransferredForPpmFlow || !$die->transferred_at) {
             return redirect()->back()
                 ->with('error', 'Cannot start PPM Processing. Die must be transferred by Production to MTN Dies first.');
         }
@@ -1590,6 +1600,19 @@ class DieController extends Controller
             $allowed4lcProcesses = ['pierce', 'trim'];
             if (empty($validated['process_type']) || !in_array($validated['process_type'], $allowed4lcProcesses, true)) {
                 $validated['process_type'] = $history->process_type;
+            }
+
+            $duplicateProcessExists = PpmHistory::query()
+                ->where('id', '!=', $history->id)
+                ->where('die_id', $history->die_id)
+                ->where('maintenance_type', '4lc_maintenance')
+                ->where('process_type', $validated['process_type'])
+                ->exists();
+
+            if ($duplicateProcessExists) {
+                throw ValidationException::withMessages([
+                    'process_type' => 'Process type 4LC tersebut sudah ada untuk die ini. Ubah hanya record process yang dipilih.',
+                ]);
             }
         } else {
             // For regular PPM edit, keep process type immutable in this form.

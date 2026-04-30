@@ -1017,19 +1017,30 @@ class DieMonitoringService
      */
     public function transferDiesToMtn(DieModel $die, array $data): void
     {
+        $requestedFlow = $data['transfer_flow'] ?? null;
+        $isExplicitPpmFlow = $requestedFlow === 'ppm';
+        $isExplicit4LcFlow = $requestedFlow === '4lc';
+
         $isLot4Flow =
-            (bool) $die->lot4_schedule_approved_at ||
-            in_array((string) $die->lot4_alert_status, ['4lc_scheduled', '4lc_approved'], true) ||
-            in_array((string) $die->ppm_alert_status, ['4lc_scheduled', '4lc_approved'], true);
+            $isExplicit4LcFlow || (
+                !$isExplicitPpmFlow && (
+                    (bool) $die->lot4_schedule_approved_at ||
+                    in_array((string) $die->lot4_alert_status, ['4lc_scheduled', '4lc_approved'], true) ||
+                    in_array((string) $die->ppm_alert_status, ['4lc_scheduled', '4lc_approved'], true)
+                )
+            );
         $transferStatus = $isLot4Flow ? 'transferred_to_mtn_4lc' : 'transferred_to_mtn';
 
         $transferData = [
-            'transfer_from_location' => $die->location ?? $data['from_location'] ?? 'Production',
             'transfer_to_location' => $data['to_location'] ?? 'MTN Dies',
-            'transferred_by' => $data['transferred_by'] ?? auth()->user()?->name,
-            'transferred_at' => now(),
             'location' => $data['to_location'] ?? 'MTN Dies',
         ];
+
+        if (!$die->transferred_at) {
+            $transferData['transfer_from_location'] = $die->location ?? $data['from_location'] ?? 'Production';
+            $transferData['transferred_by'] = $data['transferred_by'] ?? auth()->user()?->name;
+            $transferData['transferred_at'] = now();
+        }
 
         if ($isLot4Flow) {
             $transferData['lot4_alert_status'] = $transferStatus;
@@ -1064,20 +1075,30 @@ class DieMonitoringService
                 ->get();
 
             foreach ($groupMembers as $member) {
+                $memberUsesExplicitPpmFlow = $requestedFlow === 'ppm';
+                $memberUsesExplicit4LcFlow = $requestedFlow === '4lc';
+
                 $memberIsLot4Flow =
-                    (bool) $member->lot4_schedule_approved_at ||
-                    in_array((string) $member->lot4_alert_status, ['4lc_scheduled', '4lc_approved'], true) ||
-                    in_array((string) $member->ppm_alert_status, ['4lc_scheduled', '4lc_approved'], true);
+                    $memberUsesExplicit4LcFlow || (
+                        !$memberUsesExplicitPpmFlow && (
+                            (bool) $member->lot4_schedule_approved_at ||
+                            in_array((string) $member->lot4_alert_status, ['4lc_scheduled', '4lc_approved'], true) ||
+                            in_array((string) $member->ppm_alert_status, ['4lc_scheduled', '4lc_approved'], true)
+                        )
+                    );
 
                 $memberTransferStatus = $memberIsLot4Flow ? 'transferred_to_mtn_4lc' : 'transferred_to_mtn';
 
                 $memberTransferData = [
-                    'transfer_from_location' => $member->location ?? $data['from_location'] ?? 'Production',
                     'transfer_to_location' => $data['to_location'] ?? 'MTN Dies',
-                    'transferred_by' => $data['transferred_by'] ?? auth()->user()?->name,
-                    'transferred_at' => now(),
                     'location' => $data['to_location'] ?? 'MTN Dies',
                 ];
+
+                if (!$member->transferred_at) {
+                    $memberTransferData['transfer_from_location'] = $member->location ?? $data['from_location'] ?? 'Production';
+                    $memberTransferData['transferred_by'] = $data['transferred_by'] ?? auth()->user()?->name;
+                    $memberTransferData['transferred_at'] = now();
+                }
 
                 if ($memberTransferStatus === 'transferred_to_mtn_4lc') {
                     $memberTransferData['lot4_alert_status'] = $memberTransferStatus;

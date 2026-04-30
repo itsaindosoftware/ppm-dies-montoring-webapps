@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
-import { getChecklistItems, getProcessTypeLabel } from '@/Utils/PpmChecklistData';
+import { getChecklistItems, getProcessTypeLabel, initializeChecklistResults } from '@/Utils/PpmChecklistData';
 import { confirmDialog } from '@/Utils/swal';
 // tinggal yang print pdfs
 
@@ -252,6 +252,30 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         }
     }, [activeHistory?.id, ppmHistories?.data]);
 
+    useEffect(() => {
+        if (!showEditModal || recordType !== '4lc' || !activeHistory) {
+            return;
+        }
+
+        const selectedProcessType = String(editForm.process_type || '').trim();
+        if (!['pierce', 'trim'].includes(selectedProcessType)) {
+            return;
+        }
+
+        const originalProcessType = String(activeHistory.process_type || '').trim();
+        if (selectedProcessType === originalProcessType) {
+            return;
+        }
+
+        setEditForm((prev) => ({
+            ...prev,
+            checklist_results: initializeChecklistResults(selectedProcessType, {
+                is4LotCheck: true,
+                maintenanceType: '4lc_maintenance',
+            }),
+        }));
+    }, [showEditModal, recordType, editForm.process_type, activeHistory?.id]);
+
     const normalizeResult = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
         const isNormal = normalized === 'normal' || normalized === 'ok';
@@ -480,6 +504,20 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
 
         if (!activeHistory) {
             return;
+        }
+
+        if (recordType === '4lc') {
+            const targetProcessType = String(editForm.process_type || '').trim();
+            const hasDuplicateProcessInSameDie = (activeDieGroup?.histories || []).some((history) =>
+                history?.id !== activeHistory?.id
+                && isFourLotHistory(history)
+                && String(history?.process_type || '').trim() === targetProcessType
+            );
+
+            if (hasDuplicateProcessInSameDie) {
+                setFormError('Process type 4LC tersebut sudah ada pada die ini. Edit hanya boleh 1 record per process type (Pierce/Trim).');
+                return;
+            }
         }
 
         setIsSaving(true);
@@ -807,10 +845,16 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                 <div><span className="text-gray-500">Part No:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.part_number || '-'}</p></div>
                                                 <div><span className="text-gray-500">Model:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.model || '-'}</p></div>
                                                 <div><span className="text-gray-500">Customer:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.die?.customer || '-'}</p></div>
-                                                <div><span className="text-gray-500">PPM Date:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{formatDisplayDate(activeHistory.ppm_date)}</p></div>
+                                                <div>
+                                                    <span className="text-gray-500">PPM Date:</span>
+                                                    <p className="font-semibold text-gray-800 dark:text-gray-100">{formatDisplayDate(activeHistory.ppm_date)}</p>
+                                                </div>
                                                 <div><span className="text-gray-500">PIC:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.pic || '-'}</p></div>
                                                 <div><span className="text-gray-500">Maintenance:</span><p className="font-semibold text-gray-800 dark:text-gray-100">{activeHistory.maintenance_type || '-'}</p></div>
                                                 <div><span className="text-gray-500">Status:</span><p className="font-semibold text-green-600">{activeHistory.status || '-'}</p></div>
+                                                {activeHistoryIs4lc && activeHistory.latest_4lc_date && (
+                                                    <div><span className="text-gray-500">Last 4 Lot Check Date:</span><p className="font-semibold text-green-600">{formatDisplayDate(activeHistory.latest_4lc_date)}</p></div>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1282,6 +1326,18 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                                             PROCESS *
                                                         </label>
+                                                        {recordType === '4lc' ? (
+                                                            <select
+                                                                value={editForm.process_type}
+                                                                onChange={(e) => handleEditInputChange('process_type', e.target.value)}
+                                                                className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm font-semibold"
+                                                                required
+                                                            >
+                                                                <option value="">-- Select Process --</option>
+                                                                <option value="pierce">Pierce</option>
+                                                                <option value="trim">Trim</option>
+                                                            </select>
+                                                        ) : (
                                                         <select
                                                             value={editForm.process_type}
                                                             onChange={(e) => handleEditInputChange('process_type', e.target.value)}
@@ -1299,9 +1355,16 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                             <option value="pierce">Pierce</option>
                                                             <option value="cam_pierce">Cam Pierce</option>
                                                         </select>
-                                                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                                            Process type locked - editing: {getProcessTypeLabel(editForm.process_type)}
-                                                        </p>
+                                                        )}
+                                                        {recordType === '4lc' ? (
+                                                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+                                                                4LC process type can be edited (Pierce/Trim)
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                                                Process type locked - editing: {getProcessTypeLabel(editForm.process_type)}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 </div>
 

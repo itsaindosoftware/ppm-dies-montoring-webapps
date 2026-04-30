@@ -25,6 +25,12 @@ class TransferDiesController extends Controller
         '4lc_approved',
     ];
 
+    private const AT_MTN_4LC_STATUSES = [
+        'transferred_to_mtn_4lc',
+        '4lc_in_progress',
+        '4lc_additional_repair',
+    ];
+
     protected DieMonitoringService $monitoringService;
 
     public function __construct(DieMonitoringService $monitoringService)
@@ -57,13 +63,13 @@ class TransferDiesController extends Controller
                     return false;
                 }
 
-                $is4LotReady = in_array($die->lot4_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true)
-                    || in_array($die->ppm_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true);
+                $isAtMtnFor4Lc = in_array((string) $die->lot4_alert_status, self::AT_MTN_4LC_STATUSES, true)
+                    || in_array((string) $die->ppm_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress'], true);
 
                 return $die->ppm_status === 'red'
-                    && !$die->transferred_at
-                    && in_array($die->ppm_alert_status, self::TO_MTN_ELIGIBLE_STATUSES, true)
-                    && !$is4LotReady;
+                    && (string) $die->ppm_alert_status === 'schedule_approved'
+                    && !empty($die->schedule_approved_at)
+                    && (!$die->transferred_at || $isAtMtnFor4Lc);
             })
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -78,9 +84,11 @@ class TransferDiesController extends Controller
                     return false;
                 }
 
-                $is4LcReady = in_array($die->lot4_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true)
+                $is4LcReady = !empty($die->lot4_schedule_approved_at) && (
+                    in_array($die->lot4_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true)
                     || (in_array($die->ppm_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true)
-                        && !in_array((string) $die->lot4_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair', '4lc_completed'], true));
+                        && !in_array((string) $die->lot4_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair', '4lc_completed'], true))
+                );
 
                 $is4LcAlreadyTransferred = in_array((string) $die->lot4_alert_status, [
                     'transferred_to_mtn_4lc',
@@ -173,6 +181,7 @@ class TransferDiesController extends Controller
             'from_location' => 'nullable|string|max:100',
             'to_location' => 'nullable|string|max:100',
             'transferred_by' => 'nullable|string|max:100',
+            'transfer_flow' => 'nullable|in:ppm,4lc',
         ]);
 
         $this->monitoringService->transferDiesToMtn($die, $validated);
@@ -205,7 +214,10 @@ class TransferDiesController extends Controller
             'die_ids' => 'required|array|min:1',
             'die_ids.*' => 'exists:dies,id',
             'transferred_by' => 'nullable|string|max:100',
+            'transfer_flow' => 'nullable|in:ppm,4lc',
         ]);
+
+        $requestedFlow = $validated['transfer_flow'] ?? 'ppm';
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
             ->where(function ($query) {
@@ -216,7 +228,7 @@ class TransferDiesController extends Controller
             ->get();
 
         $dies = $dies
-            ->filter(function ($die) {
+            ->filter(function ($die) use ($requestedFlow) {
                 if (!$die instanceof DieModel) {
                     return false;
                 }
@@ -228,6 +240,11 @@ class TransferDiesController extends Controller
                     '4lc_additional_repair',
                     '4lc_completed',
                 ], true);
+
+                if ($requestedFlow === 'ppm') {
+                    return $die->ppm_status === 'red'
+                        && in_array((string) $die->ppm_alert_status, self::TO_MTN_ELIGIBLE_STATUSES, true);
+                }
 
                 if ($is4LotReady) {
                     return !$is4LotAlreadyTransferred;
@@ -250,6 +267,7 @@ class TransferDiesController extends Controller
 
             $this->monitoringService->transferDiesToMtn($die, [
                 'transferred_by' => $validated['transferred_by'] ?? auth()->user()?->name,
+                'transfer_flow' => $requestedFlow,
             ]);
             $count++;
         }

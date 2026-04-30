@@ -45,11 +45,13 @@ export default function DieShow({ auth, die }) {
     const isGroup4LotFlow = Boolean(die.is_group_4lot_flow || lot4Status);
     const is4lcTransferredToMtn = lot4Status === 'transferred_to_mtn_4lc' && !!die.lot4_schedule_approved_at;
     const is4lcTransferredFromProduction = lot4Status === 'transferred_to_mtn_4lc' && !!die.transferred_at;
+    const is4lcCompletedAfterTransfer = lot4Status === '4lc_completed' && !!die.transferred_at;
     const isPpmTransferredToMtn =
         die.ppm_alert_status === 'transferred_to_mtn' ||
         ['ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status) ||
         isLegacyPpmTransferInLot4Status ||
-        is4lcTransferredFromProduction;
+        is4lcTransferredFromProduction ||
+        is4lcCompletedAfterTransfer;
     const isPpmFlowActive = isPpmTransferredToMtn || ['ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
     const is4lcFlowActive = is4lcTransferredToMtn || ['4lc_in_progress', '4lc_additional_repair'].includes(lot4Status);
     const isStartPpmBlocked =

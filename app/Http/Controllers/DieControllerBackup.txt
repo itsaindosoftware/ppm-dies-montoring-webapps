@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 // s
 
@@ -1590,6 +1591,19 @@ class DieController extends Controller
             $allowed4lcProcesses = ['pierce', 'trim'];
             if (empty($validated['process_type']) || !in_array($validated['process_type'], $allowed4lcProcesses, true)) {
                 $validated['process_type'] = $history->process_type;
+            }
+
+            $duplicateProcessExists = PpmHistory::query()
+                ->where('id', '!=', $history->id)
+                ->where('die_id', $history->die_id)
+                ->where('maintenance_type', '4lc_maintenance')
+                ->where('process_type', $validated['process_type'])
+                ->exists();
+
+            if ($duplicateProcessExists) {
+                throw ValidationException::withMessages([
+                    'process_type' => 'Process type 4LC tersebut sudah ada untuk die ini. Ubah hanya record process yang dipilih.',
+                ]);
             }
         } else {
             // For regular PPM edit, keep process type immutable in this form.
