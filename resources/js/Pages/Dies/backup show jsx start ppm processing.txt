@@ -28,20 +28,16 @@ export default function DieShow({ auth, die }) {
     const isPpic = ['admin', 'ppic'].includes(auth.user.role);
     const isProd = ['admin', 'production'].includes(auth.user.role);
     const isMtnDies = ['admin', 'mtn_dies'].includes(auth.user.role);
-    const rawLot4Status = die.lot4_alert_status;
+    const lot4Status = die.lot4_alert_status;
     const lot4ScheduledDate = die.lot4_scheduled_date;
     const lot4ScheduledBy = die.lot4_scheduled_by;
+    const isGroup4LotFlow = Boolean(die.is_group_4lot_flow || lot4Status);
     const isLegacyPpmTransferInLot4Status =
-    rawLot4Status === 'transferred_to_mtn_4lc' &&
+    lot4Status === 'transferred_to_mtn_4lc' &&
     !die.lot4_schedule_approved_at &&
     !!die.schedule_approved_at;
-    const lot4Status = isLegacyPpmTransferInLot4Status
-        ? (lot4ScheduledDate ? '4lc_scheduled' : null)
-        : (rawLot4Status || (['4lc_scheduled', '4lc_approved', 'transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair', '4lc_completed'].includes(die.ppm_alert_status) ? die.ppm_alert_status : null));
-    const isGroup4LotFlow = Boolean(die.is_group_4lot_flow || lot4Status);
     const isPpmTransferredToMtn = die.ppm_alert_status === 'transferred_to_mtn' || isLegacyPpmTransferInLot4Status;
     const is4lcTransferredToMtn = lot4Status === 'transferred_to_mtn_4lc' && !!die.lot4_schedule_approved_at;
-    const is4lcTransferredFromProduction = lot4Status === 'transferred_to_mtn_4lc' && !!die.transferred_at;
     const isPpmFlowActive = isPpmTransferredToMtn || ['ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
     const is4lcFlowActive = is4lcTransferredToMtn || ['4lc_in_progress', '4lc_additional_repair'].includes(lot4Status);
     const isStartPpmBlocked =
@@ -57,11 +53,13 @@ export default function DieShow({ auth, die }) {
     // Keep Start/Record actions hidden while there are unfinished processes in the currently active flow.
     const hasActivePpmProcesses = die.die_processes && die.die_processes.length > 0 && !die.ppm_process_progress?.all_completed;
     const hasActive4lcProcesses = die.die_processes && die.die_processes.length > 0 && !die.lot_check_progress?.all_completed;
-    const hasActiveProcesses = hasActivePpmProcesses || hasActive4lcProcesses;
+    const hasActiveProcesses = is4lcFlowActive ? hasActive4lcProcesses : (isPpmFlowActive ? hasActivePpmProcesses : false);
 
+    const isFirstPpmCycle = !die.last_ppm_date && (die.ppm_count ?? 0) === 0;
     const showPpmProcessProgress =
         !is4lcFlowActive &&
-        !!die.ppm_started_at && 
+        isFirstPpmCycle &&
+        !!die.ppm_started_at &&
         ['ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status) &&
         die.die_processes &&
         die.die_processes.length > 0;
@@ -144,8 +142,8 @@ export default function DieShow({ auth, die }) {
                 !!lot4ScheduledDate &&
                 ['4lc_scheduled', '4lc_approved'].includes(lot4Status);
     // const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
-        const canStartPpmProcessing = isMtnDies && !isStartPpmBlocked;
-        const canStart4lcProcessing = isMtnDies && !isStart4lcBlocked;
+        const canStartPpmProcessing = isMtnDies && !is4lcFlowActive && !isStartPpmBlocked;
+        const canStart4lcProcessing = isMtnDies && !isPpmFlowActive && !isStart4lcBlocked;
     const ppmHistoryEntries = useMemo(
         () => (die.ppmHistories || []).filter((history) =>
             history?.status === 'done' && history?.maintenance_type !== '4lc_maintenance'
@@ -491,36 +489,36 @@ export default function DieShow({ auth, die }) {
                     </div>
                     <div className="flex gap-2">
                         {canEditDies && !hasActiveProcesses && (
-                            <Link
-                                href={route('dies.edit', { die: die.encrypted_id })}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition dark:bg-gray-700 dark:text-gray-300"
-                            >
-                                ✏️ Edit
-                            </Link>
-                        )}
-                        {canEditDies && (
-                            <button
-                                onClick={() => {
-                                    setShowPpmModal(true);
-                                }}
-                                disabled={!canRecordPpm}
-                                className={`px-4 py-2 rounded-lg transition ${
-                                    canRecordPpm
-                                        ? 'bg-green-600 text-white hover:bg-green-700'
-                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                }`}
-                                title={!canRecordPpm ? 'Die must be transferred to MTN Dies location first' : 'Record PPM inspection'}
-                            >
-                                📝 Record PPM
-                            </button>
-                        )}
-                        {canEditDies && canRecord4lcMaintenance && (
-                            <button
-                                onClick={open4lcMaintenanceModal}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                            >
-                                📝 Record 4LC Maintenance
-                            </button>
+                            <>
+                                <Link
+                                    href={route('dies.edit', { die: die.encrypted_id })}
+                                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition dark:bg-gray-700 dark:text-gray-300"
+                                >
+                                    ✏️ Edit
+                                </Link>
+                                <button
+                                    onClick={() => {
+                                        setShowPpmModal(true);
+                                    }}
+                                    disabled={!canRecordPpm}
+                                    className={`px-4 py-2 rounded-lg transition ${
+                                        canRecordPpm
+                                            ? 'bg-green-600 text-white hover:bg-green-700'
+                                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                    }`}
+                                    title={!canRecordPpm ? 'Die must be transferred to MTN Dies location first' : 'Record PPM inspection'}
+                                >
+                                    📝 Record PPM
+                                </button>
+                                {canRecord4lcMaintenance && (
+                                    <button
+                                        onClick={open4lcMaintenanceModal}
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                                    >
+                                        📝 Record 4LC Maintenance
+                                    </button>
+                                )}
+                            </>
                         )}
                         {/* PPIC: Set Next LOT Date */}
                         {isPpic && ['orange', 'red'].includes(die.ppm_status) && !['transferred_to_mtn', 'ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) && (
@@ -869,7 +867,7 @@ export default function DieShow({ auth, die }) {
                                     )}
 
                                     {/* PROD: Transfer Dies to MTN Info */}
-                                    {isPpmTransferredToMtn && die.transferred_at && (
+                                    {die.transferred_at && (
                                         <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
                                             <p className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase mb-1">
                                                 🚚 PROD - Transfer Dies to MTN Dies
@@ -1003,7 +1001,7 @@ export default function DieShow({ auth, die }) {
                                         </div>
                                     )}
 
-                                    {is4lcTransferredFromProduction && (
+                                    {die.transferred_at && (
                                         <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
                                             <p className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase mb-1">
                                                 🚚 PROD - Transfer Dies to MTN Dies

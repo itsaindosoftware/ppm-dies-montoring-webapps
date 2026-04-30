@@ -217,7 +217,7 @@ class DieController extends Controller
 
         $ppmHistories = PpmHistory::query()
             ->with([
-                'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke,is_4lot_check',
+                'die:id,part_number,part_name,line,qty_die,machine_model_id,customer_id,accumulation_stroke,is_4lot_check,group_name,lot4_alert_status,lot4_schedule_approved_at,lot4_started_at,lot4_finished_at',
                 'die.customer:id,code,name',
                 'die.machineModel:id,code',
             ])
@@ -307,6 +307,11 @@ class DieController extends Controller
                     'id' => $die?->id,
                     'encrypted_id' => $die?->encrypted_id,
                     'is_4lot_check' => (bool) ($die?->is_4lot_check),
+                    'group_name' => $die?->group_name,
+                    'lot4_alert_status' => $die?->lot4_alert_status,
+                    'lot4_schedule_approved_at' => $die?->lot4_schedule_approved_at?->toIso8601String(),
+                    'lot4_started_at' => $die?->lot4_started_at?->toIso8601String(),
+                    'lot4_finished_at' => $die?->lot4_finished_at?->toIso8601String(),
                     'part_number' => $die?->part_number,
                     'part_name' => $die?->part_name,
                     'line' => $die?->line,
@@ -462,56 +467,72 @@ class DieController extends Controller
 
         $isGroup4LotFlow = $this->isGroup4LotFlow($die);
 
-        // Build schedule info: prioritize dies table fields, fallback to ppm_schedules table
-        // Only look up fallback schedule when PPM flow is in scheduling phase
-        // (NOT during red_alerted or earlier — those are from previous cycles)
+        // Build schedule info with strict separation:
+        // - PPM uses dies.ppm_scheduled_date / ppm_schedules.ppm_date
+        // - 4LC uses ppm_schedules.lot4_check_date
         $ppmScheduledDate = $die->ppm_scheduled_date?->format('d-M-Y');
         $ppmScheduledBy = $die->ppm_scheduled_by;
+        $lot4ScheduledDate = null;
+        $lot4ScheduledBy = null;
 
         // Only do fallback lookup when status indicates scheduling has actually happened
         // in the CURRENT cycle. Statuses like orange_alerted, lot_date_set, red_alerted
         // are BEFORE MTN creates a schedule, so old schedule data should NOT be shown.
         $schedulingActiveStatuses = [
             'ppm_scheduled',
-            '4lc_scheduled',
             'schedule_approved',
             'transferred_to_mtn',
-            'transferred_to_mtn_4lc',
             'ppm_in_progress',
-            '4lc_in_progress',
             'additional_repair',
             'ppm_completed',
+        ];
+
+        $schedulingActiveLot4Statuses = [
+            '4lc_scheduled',
+            '4lc_approved',
+            'transferred_to_mtn_4lc',
+            '4lc_in_progress',
+            '4lc_additional_repair',
             '4lc_completed',
         ];
 
-        if (in_array($die->ppm_alert_status, $schedulingActiveStatuses)) {
-            // Get upcoming/latest PPM schedule from ppm_schedules table (scheduler calendar)
-            $upcomingSchedule = $die->ppmSchedules()
-                ->where(function ($q) {
-                    $q->whereNotNull('plan_week')
-                        ->orWhereNotNull('ppm_date');
-                })
+        $shouldResolvePpmSchedule = in_array($die->ppm_alert_status, $schedulingActiveStatuses, true);
+        $shouldResolveLot4Schedule =
+            $isGroup4LotFlow ||
+            in_array($die->lot4_alert_status, $schedulingActiveLot4Statuses, true);
+
+        if ($shouldResolvePpmSchedule) {
+            $latestPpmSchedule = $die->ppmSchedules()
+                ->whereNotNull('ppm_date')
                 ->orderByDesc('year')
                 ->orderByDesc('month')
                 ->orderByDesc('week')
                 ->first();
 
             // If no date on die record, try to get from ppm_schedules (scheduler calendar)
-            if (!$ppmScheduledDate && $upcomingSchedule) {
-                if ($upcomingSchedule->ppm_date) {
-                    $ppmScheduledDate = $upcomingSchedule->ppm_date->format('d-M-Y');
-                } elseif ($upcomingSchedule->plan_week) {
-                    $ppmScheduledDate = "Week {$upcomingSchedule->week_label}, " .
-                        \Carbon\Carbon::create($upcomingSchedule->year, $upcomingSchedule->month, 1)->format('M Y') .
-                        " (Plan: {$upcomingSchedule->plan_week})";
-                }
+            if (!$ppmScheduledDate && $latestPpmSchedule) {
+                $ppmScheduledDate = $latestPpmSchedule->ppm_date->format('d-M-Y');
                 // Use updated_by (who last edited the calendar cell) as the scheduler
-                $ppmScheduledBy = $ppmScheduledBy ?: ($upcomingSchedule->updated_by ?? $upcomingSchedule->pic);
+                $ppmScheduledBy = $ppmScheduledBy ?: ($latestPpmSchedule->updated_by ?? $latestPpmSchedule->pic);
             }
 
             // If ppm_scheduled_by still empty but calendar has updated_by, use that
-            if (!$ppmScheduledBy && $upcomingSchedule) {
-                $ppmScheduledBy = $upcomingSchedule->updated_by ?? $upcomingSchedule->pic;
+            if (!$ppmScheduledBy && $latestPpmSchedule) {
+                $ppmScheduledBy = $latestPpmSchedule->updated_by ?? $latestPpmSchedule->pic;
+            }
+        }
+
+        if ($shouldResolveLot4Schedule) {
+            $latestLot4Schedule = $die->ppmSchedules()
+                ->whereNotNull('lot4_check_date')
+                ->orderByDesc('year')
+                ->orderByDesc('month')
+                ->orderByDesc('week')
+                ->first();
+
+            if ($latestLot4Schedule) {
+                $lot4ScheduledDate = $latestLot4Schedule->lot4_check_date->format('d-M-Y');
+                $lot4ScheduledBy = $latestLot4Schedule->updated_by ?? $latestLot4Schedule->pic;
             }
         }
 
@@ -541,6 +562,8 @@ class DieController extends Controller
                 'ppm_status_label' => $die->ppm_status_label,
                 'ppm_alert_status' => $die->ppm_alert_status,
                 'ppm_alert_status_label' => $die->ppm_alert_status_label,
+                'lot4_alert_status' => $die->lot4_alert_status,
+                'lot4_alert_status_label' => $die->lot4_alert_status_label,
                 'last_ppm_date' => $die->last_ppm_date?->format('d-M-Y'),
                 'location' => $die->location,
                 'notes' => $die->notes,
@@ -563,11 +586,17 @@ class DieController extends Controller
                 // PPM Schedule Info
                 'ppm_scheduled_date' => $ppmScheduledDate,
                 'ppm_scheduled_by' => $ppmScheduledBy,
+                'lot4_scheduled_date' => $lot4ScheduledDate,
+                'lot4_scheduled_by' => $lot4ScheduledBy,
                 'schedule_approved_at' => $die->schedule_approved_at?->format('d-M-Y H:i'),
+                'lot4_schedule_approved_at' => $die->lot4_schedule_approved_at?->format('d-M-Y H:i'),
                 'schedule_approved_by' => $die->schedule_approved_by,
+                'lot4_schedule_approved_by' => $die->lot4_schedule_approved_by,
                 // PPM Processing Info
                 'ppm_started_at' => $die->ppm_started_at?->format('d-M-Y H:i'),
                 'ppm_finished_at' => $die->ppm_finished_at?->format('d-M-Y H:i'),
+                'lot4_started_at' => $die->lot4_started_at?->format('d-M-Y H:i'),
+                'lot4_finished_at' => $die->lot4_finished_at?->format('d-M-Y H:i'),
                 'ppm_total_days' => $die->ppm_total_days,
                 'is_4lot_check' => $die->is_4lot_check,
                 'is_group_4lot_flow' => $isGroup4LotFlow,
@@ -734,7 +763,9 @@ class DieController extends Controller
      */
     public function record4lcMaintenance(Request $request, DieModel $die)
     {
-        if (!$this->isGroup4LotFlow($die) || !in_array($die->ppm_alert_status, ['transferred_to_mtn_4lc', 'transferred_to_mtn', '4lc_in_progress', 'additional_repair'], true)) {
+        $allowedLot4Statuses = ['transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair'];
+
+        if (!$this->isGroup4LotFlow($die) || !in_array($die->lot4_alert_status, $allowedLot4Statuses, true)) {
             return redirect()->back()
                 ->with('error', 'Cannot record 4LC maintenance. Die must be transferred to MTN Dies first.');
         }
@@ -820,6 +851,13 @@ class DieController extends Controller
             return redirect()->back()
                 ->with('error', 'Cannot start PPM Processing. PPM schedule must be confirmed by PPIC first.');
         }
+
+        // Strict separation: this endpoint handles PPM flow only.
+        if (in_array($die->lot4_alert_status, ['4lc_in_progress', '4lc_additional_repair', '4lc_completed'], true)) {
+            return redirect()->back()
+                ->with('error', 'Cannot start PPM Processing from 4LC flow. Use Start 4LC Processing.');
+        }
+
         // ketika jadwal sudah dikonfirmasi tapi bagian production belum ditransfer ke MTN Dies, maka tidak bisa mulai ppm processing
         if ($die->ppm_alert_status !== 'transferred_to_mtn' || !$die->transferred_at) {
             return redirect()->back()
@@ -845,12 +883,12 @@ class DieController extends Controller
     {
         $isGroup4LotFlow = $this->isGroup4LotFlow($die);
 
-        if (!$isGroup4LotFlow || !$die->schedule_approved_at) {
+        if (!$isGroup4LotFlow || !$die->lot4_schedule_approved_at) {
             return redirect()->back()
                 ->with('error', 'Cannot start 4LC Processing. 4LC schedule must be confirmed by PPIC first.');
         }
 
-        if (!in_array($die->ppm_alert_status, ['transferred_to_mtn_4lc', 'transferred_to_mtn'], true) || !$die->transferred_at) {
+        if (!in_array($die->lot4_alert_status, ['transferred_to_mtn_4lc'], true) || !$die->transferred_at) {
             return redirect()->back()
                 ->with('error', 'Cannot start 4LC Processing. Die must be transferred by Production to MTN Dies first.');
         }
@@ -906,6 +944,14 @@ class DieController extends Controller
      */
     public function transferDies(Request $request, DieModel $die)
     {
+        $isGroup4LotFlow = $this->isGroup4LotFlow($die);
+
+        // Harden PPM transfer requirements: only allow transfer after core milestones are complete.
+        if (!$isGroup4LotFlow && (!$die->last_lot_date || !$die->ppm_scheduled_date || !$die->schedule_approved_at)) {
+            return redirect()->back()
+                ->with('error', 'Cannot transfer to MTN Dies. Complete Last LOT Date, MTN Dies Schedule, and PPIC Schedule Approval first.');
+        }
+
         $validated = $request->validate([
             'from_location' => 'nullable|string|max:100',
             'to_location' => 'nullable|string|max:100',
@@ -940,10 +986,31 @@ class DieController extends Controller
      */
     public function markAdditionalRepair(Request $request, DieModel $die)
     {
+        if ($die->ppm_alert_status !== 'ppm_in_progress') {
+            return redirect()->back()
+                ->with('error', 'Cannot mark PPM additional repair. Die must be in PPM in-progress status.');
+        }
+
         $this->monitoringService->markAdditionalRepair($die);
 
         return redirect()->back()
             ->with('success', 'Die marked for additional repair. PPM continues after repair.');
+    }
+
+    /**
+     * MTN Dies: Mark Additional Repair Needed during 4LC
+     */
+    public function markAdditionalRepair4lc(Request $request, DieModel $die)
+    {
+        if (!$this->isGroup4LotFlow($die) || $die->lot4_alert_status !== '4lc_in_progress') {
+            return redirect()->back()
+                ->with('error', 'Cannot mark 4LC additional repair. Die must be in 4LC in-progress status.');
+        }
+
+        $this->monitoringService->markAdditionalRepair4lc($die);
+
+        return redirect()->back()
+            ->with('success', 'Die marked for additional repair. 4LC process can be resumed after repair.');
     }
 
     /**
@@ -952,10 +1019,31 @@ class DieController extends Controller
      */
     public function resumePpmAfterRepair(DieModel $die)
     {
+        if ($die->ppm_alert_status !== 'additional_repair') {
+            return redirect()->back()
+                ->with('error', 'Cannot resume PPM. Die is not in additional repair status.');
+        }
+
         $this->monitoringService->resumePpmAfterRepair($die);
 
         return redirect()->back()
             ->with('success', 'PPM processing resumed after additional repair.');
+    }
+
+    /**
+     * MTN Dies: Resume 4LC after Additional Repair
+     */
+    public function resume4lcAfterRepair(DieModel $die)
+    {
+        if (!$this->isGroup4LotFlow($die) || $die->lot4_alert_status !== '4lc_additional_repair') {
+            return redirect()->back()
+                ->with('error', 'Cannot resume 4LC. Die is not in 4LC additional repair status.');
+        }
+
+        $this->monitoringService->resume4lcAfterRepair($die);
+
+        return redirect()->back()
+            ->with('success', '4LC processing resumed after additional repair.');
     }
 
     /**
@@ -1199,7 +1287,11 @@ class DieController extends Controller
         ]);
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->whereIn('ppm_alert_status', ['ppm_completed', '4lc_completed'])
+            ->where(function ($query) {
+                $query->whereIn('ppm_alert_status', ['ppm_completed'])
+                    ->orWhereIn('lot4_alert_status', ['4lc_completed'])
+                    ->orWhereIn('ppm_alert_status', ['4lc_completed']);
+            })
             ->get();
 
         if ($dies->isEmpty()) {
@@ -1467,6 +1559,7 @@ class DieController extends Controller
     public function updatePpmForm(Request $request, PpmHistory $history)
     {
         $validated = $request->validate([
+            'record_type' => 'nullable|in:ppm,4lc',
             'ppm_date' => 'required|date',
             'pic' => 'required|string|max:100',
             'maintenance_type' => 'required|in:routine,repair,overhaul,emergency,4lc_maintenance',
@@ -1487,6 +1580,28 @@ class DieController extends Controller
 
         // Accept ISO datetime input from frontend and persist as date column format.
         $validated['ppm_date'] = Carbon::parse($validated['ppm_date'])->toDateString();
+
+        $requestedRecordType = $validated['record_type'] ?? null;
+        $is4lcRecord = $requestedRecordType === '4lc' || $history->maintenance_type === '4lc_maintenance';
+
+        if ($is4lcRecord) {
+            // Keep 4LC records in 4LC category and valid 4LC process types.
+            $validated['maintenance_type'] = '4lc_maintenance';
+            $allowed4lcProcesses = ['pierce', 'trim'];
+            if (empty($validated['process_type']) || !in_array($validated['process_type'], $allowed4lcProcesses, true)) {
+                $validated['process_type'] = $history->process_type;
+            }
+        } else {
+            // For regular PPM edit, keep process type immutable in this form.
+            $validated['process_type'] = $history->process_type;
+        }
+
+        // Keep 4LC records in 4LC category to avoid disappearing from the 4LC tab.
+        if ($history->maintenance_type === '4lc_maintenance' && $validated['maintenance_type'] !== '4lc_maintenance') {
+            $validated['maintenance_type'] = '4lc_maintenance';
+        }
+
+        unset($validated['record_type']);
 
         if ($request->hasFile('illustration_image')) {
             if ($history->illustration_path && Storage::disk('public')->exists($history->illustration_path)) {

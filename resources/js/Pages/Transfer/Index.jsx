@@ -1,14 +1,15 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 
-export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recentTransfers, tab, stats }) {
+export default function TransferIndex({ auth, toMtn, toMtn4Lc, toProduction, atMtn, recentTransfers, tab, stats }) {
     const [activeTab, setActiveTab] = useState(tab || 'to_mtn');
     const [selectedIds, setSelectedIds] = useState([]);
     const [processing, setProcessing] = useState(false);
 
     const tabs = [
         { key: 'to_mtn', label: 'Pending Transfer to MTN', count: stats.pending_to_mtn, color: 'red' },
+        { key: 'to_mtn_4lc', label: 'Pending Transfer to MTN (4LC)', count: stats.pending_to_mtn_4lc || 0, color: 'orange' },
         { key: 'at_mtn', label: 'Currently at MTN', count: stats.at_mtn, color: 'yellow' },
         { key: 'to_prod', label: 'Pending Return to Prod', count: stats.pending_to_prod, color: 'green' },
         { key: 'history', label: 'Recent History', count: recentTransfers?.length || 0, color: 'gray' },
@@ -16,6 +17,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
 
     const currentData = {
         to_mtn: toMtn,
+        to_mtn_4lc: toMtn4Lc,
         at_mtn: atMtn,
         to_prod: toProduction,
         history: recentTransfers,
@@ -64,8 +66,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
         router.post(route('transfer-dies.to-production', die.encrypted_id), {});
     };
 
-    // const is4LotReady = (die) => die.is_4lot_check && die.ppm_alert_status === '4lc_approved';
-      const is4LotReady = (die) =>  die.ppm_alert_status === '4lc_approved';
+    const is4LotReady = (die) => die.lot4_alert_status === '4lc_approved' || die.ppm_alert_status === '4lc_approved';
 
     const isProduction = auth.user.role === 'production' || auth.user.role === 'admin';
     const isMtnDies = auth.user.role === 'mtn_dies' || auth.user.role === 'admin';
@@ -79,7 +80,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
 
             <div className="py-6 px-6">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                     {tabs.map(t => (
                         <button
                             key={t.key}
@@ -93,6 +94,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                             <p className="text-sm text-gray-500 dark:text-gray-400">{t.label}</p>
                             <p className={`text-2xl font-bold ${
                                 t.color === 'red' ? 'text-red-600' :
+                                t.color === 'orange' ? 'text-orange-600' :
                                 t.color === 'yellow' ? 'text-yellow-600' :
                                 t.color === 'green' ? 'text-green-600' : 'text-gray-600'
                             }`}>
@@ -109,13 +111,13 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                             {selectedIds.length} die(s) selected
                         </span>
                         <div className="flex gap-2">
-                            {activeTab === 'to_mtn' && isProduction && (
+                            {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') && isProduction && (
                                 <button
                                     onClick={handleBatchTransferToMtn}
                                     disabled={processing}
                                     className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
                                 >
-                                    {processing ? 'Transferring...' : `Transfer ${selectedIds.length} to MTN Dies`}
+                                    {processing ? 'Transferring...' : `Transfer ${selectedIds.length} to MTN Dies${activeTab === 'to_mtn_4lc' ? ' (4 LC)' : ''}`}
                                 </button>
                             )}
                             {activeTab === 'to_prod' && isMtnDies && (
@@ -140,7 +142,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead className="bg-gray-50 dark:bg-gray-900">
                                 <tr>
-                                    {(activeTab === 'to_mtn' || activeTab === 'to_prod') && (
+                                    {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc' || activeTab === 'to_prod') && (
                                         <th className="px-4 py-3">
                                             <input type="checkbox" onChange={toggleAll}
                                                 checked={currentData.length > 0 && selectedIds.length === currentData.length}
@@ -155,7 +157,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                        {activeTab === 'to_mtn' ? 'Red Alerted' :
+                                        {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') ? 'Ready Date' :
                                          activeTab === 'history' ? 'Returned' : 'Transferred'}
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -168,9 +170,13 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                             No dies in this category.
                                         </td>
                                     </tr>
-                                ) : currentData.map(die => (
+                                ) : currentData.map(die => {
+                                    const transferStatus = die.lot4_alert_status || die.ppm_alert_status;
+                                    const transferStatusLabel = die.lot4_alert_status_label || die.ppm_alert_status_label || transferStatus;
+
+                                    return (
                                     <tr key={die.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        {(activeTab === 'to_mtn' || activeTab === 'to_prod') && (
+                                        {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc' || activeTab === 'to_prod') && (
                                             <td className="px-4 py-3">
                                                 <input type="checkbox"
                                                     checked={selectedIds.includes(die.id)}
@@ -188,29 +194,29 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{die.location || '-'}</td>
                                         <td className="px-4 py-3">
                                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                die.ppm_alert_status === 'red_alerted' ? 'bg-red-100 text-red-700' :
-                                                ['ppm_completed', '4lc_completed'].includes(die.ppm_alert_status) ? 'bg-green-100 text-green-700' :
-                                                ['ppm_in_progress', '4lc_in_progress'].includes(die.ppm_alert_status) ? 'bg-blue-100 text-blue-700' :
-                                                ['transferred_to_mtn_4lc'].includes(die.ppm_alert_status) ? 'bg-orange-100 text-orange-700' :
-                                                !die.ppm_alert_status ? 'bg-green-100 text-green-700' :
+                                                transferStatus === 'red_alerted' ? 'bg-red-100 text-red-700' :
+                                                ['ppm_completed', '4lc_completed'].includes(transferStatus) ? 'bg-green-100 text-green-700' :
+                                                ['ppm_in_progress', '4lc_in_progress'].includes(transferStatus) ? 'bg-blue-100 text-blue-700' :
+                                                ['transferred_to_mtn_4lc'].includes(transferStatus) ? 'bg-orange-100 text-orange-700' :
+                                                !transferStatus ? 'bg-green-100 text-green-700' :
                                                 'bg-yellow-100 text-yellow-700'
                                             }`}>
-                                                {die.ppm_alert_status_label || die.ppm_alert_status || 'Returned to Production'}
+                                                {transferStatusLabel || 'Returned to Production'}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm text-gray-500">
-                                            {activeTab === 'to_mtn' ? die.red_alerted_at :
+                                            {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') ? (die.red_alerted_at || die.transferred_at || '-') :
                                              activeTab === 'history' ? die.returned_at :
                                              die.transferred_at || '-'}
                                         </td>
                                         <td className="px-4 py-3">
-                                            {activeTab === 'to_mtn' && isProduction && (
+                                            {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') && isProduction && (
                                                 <button
                                                     onClick={() => handleSingleTransferToMtn(die)}
                                                     className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
                                                 >
                                                     {/* Transfer to MTN */}
-                                                    {is4LotReady(die) ? 'Transfer to MTN (4 LC)' : 'Transfer to MTN'}
+                                                    {activeTab === 'to_mtn_4lc' || is4LotReady(die) ? 'Transfer to MTN (4 LC)' : 'Transfer to MTN'}
                                                 </button>
                                             )}
                                             {activeTab === 'to_prod' && isMtnDies && (
@@ -229,7 +235,8 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                             )}
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

@@ -41,7 +41,12 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
         return Number.isNaN(timestamp) ? 0 : timestamp;
     };
 
-    const isFourLotHistory = (history) => Boolean(history?.die?.is_4lot_check);
+    const isFourLotHistory = (history) => {
+        const maintenanceType = String(history?.maintenance_type || '').toLowerCase();
+        const lot4Status = String(history?.die?.lot4_alert_status || '').toLowerCase();
+
+        return maintenanceType === '4lc_maintenance' || lot4Status.startsWith('4lc_');
+    };
 
     const getChecklistTranslation = (history, itemNo, processType = history?.process_type) => {
         if (!processType || !itemNo) {
@@ -388,12 +393,34 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
     };
 
     const buildUpdatePayload = (history, overrides = {}) => {
+        const originalMaintenanceType = history?.maintenance_type || 'routine';
+        const originalProcessType = history?.process_type || '';
+        const is4lcRecord = recordType === '4lc' || originalMaintenanceType === '4lc_maintenance';
+        const normalizedMaintenanceType =
+            is4lcRecord
+                ? '4lc_maintenance'
+                : (overrides.maintenance_type ?? originalMaintenanceType);
+        const requestedProcessType = (overrides.process_type || originalProcessType || '').trim();
+        const normalizedProcessType =
+            is4lcRecord && !['pierce', 'trim'].includes(requestedProcessType)
+                ? originalProcessType
+                : requestedProcessType;
+        const normalizedChecklistResults = (overrides.checklist_results ?? history?.checklist_results ?? [])
+            .map((item, index) => ({
+                ...item,
+                item_no: Number(item?.item_no ?? item?.no ?? (index + 1)),
+                description: item?.description ?? '',
+                result: item?.result ?? 'normal',
+                remark: item?.remark ?? null,
+            }));
+
         return {
+            record_type: is4lcRecord ? '4lc' : 'ppm',
             ppm_date: overrides.ppm_date ?? history?.ppm_date ?? '',
             pic: overrides.pic ?? history?.pic ?? '',
-            maintenance_type: overrides.maintenance_type ?? history?.maintenance_type ?? 'routine',
-            process_type: overrides.process_type ?? history?.process_type ?? '',
-            checklist_results: overrides.checklist_results ?? history?.checklist_results ?? [],
+            maintenance_type: normalizedMaintenanceType,
+            process_type: normalizedProcessType,
+            checklist_results: normalizedChecklistResults,
             work_performed: overrides.work_performed ?? history?.work_performed ?? '',
             parts_replaced: overrides.parts_replaced ?? history?.parts_replaced ?? '',
             findings: overrides.findings ?? history?.findings ?? '',
@@ -1236,6 +1263,7 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                             onChange={(e) => handleEditInputChange('maintenance_type', e.target.value)}
                                                             className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"
                                                             required
+                                                            disabled={recordType === '4lc'}
                                                         >
                                                             <option value="routine">PPM</option>
                                                             <option value="repair">Repair</option>
@@ -1243,6 +1271,11 @@ export default function PpmFormIndex({ auth, ppmHistories, filters }) {
                                                             <option value="emergency">Emergency</option>
                                                             <option value="4lc_maintenance">4LC Maintenance</option>
                                                         </select>
+                                                        {recordType === '4lc' && (
+                                                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+                                                                Maintenance type locked for 4LC history
+                                                            </p>
+                                                        )}
                                                     </div>
 
                                                     <div>

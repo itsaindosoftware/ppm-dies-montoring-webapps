@@ -47,10 +47,13 @@ class DieModel extends Model
         'location',
         'status',
         'ppm_alert_status',   // Status alert: null, 'orange_alerted', 'red_alerted', 'lot_date_set', 'transferred_to_mtn', 'ppm_scheduled', 'ppm_in_progress'
+        'lot4_alert_status',
         'ppm_scheduled_date',
         'ppm_scheduled_by',
         'schedule_approved_at',
         'schedule_approved_by',
+        'lot4_schedule_approved_at',
+        'lot4_schedule_approved_by',
         'notes',
         // PPIC Feature: Last Date of LOT
         'last_lot_date',
@@ -63,7 +66,9 @@ class DieModel extends Model
         // PPM Timeline Tracking
         'red_alerted_at',
         'ppm_started_at',
+        'lot4_started_at',
         'ppm_finished_at',
+        'lot4_finished_at',
         'returned_to_production_at',
         'ppm_total_days',
         // Group classification
@@ -86,10 +91,13 @@ class DieModel extends Model
         'last_lot_date' => 'date:Y-m-d',
         'ppm_scheduled_date' => 'date:Y-m-d',
         'schedule_approved_at' => 'datetime',
+        'lot4_schedule_approved_at' => 'datetime',
         'transferred_at' => 'datetime',
         'red_alerted_at' => 'datetime',
         'ppm_started_at' => 'datetime',
+        'lot4_started_at' => 'datetime',
         'ppm_finished_at' => 'datetime',
+        'lot4_finished_at' => 'datetime',
         'returned_to_production_at' => 'datetime',
         'is_4lot_check' => 'boolean',
         'schedule_cancelled_at' => 'datetime',
@@ -472,18 +480,26 @@ class DieModel extends Model
             'orange_alerted' => 'Orange Alert Sent',
             'lot_date_set' => 'PPIC: Last LOT Date Set',
             'ppm_scheduled' => 'MTN Dies: PPM Scheduled',
-            '4lc_scheduled' => 'MTN Dies: 4 Lot Check Scheduled',
-            '4lc_approved' => 'PPIC: 4 Lot Check Approved',
             'schedule_approved' => 'PPIC: Schedule Approved',
             'red_alerted' => 'Red Alert Sent - Awaiting Transfer',
             'transferred_to_mtn' => 'PROD: Dies Transferred to MTN',
-            'transferred_to_mtn_4lc' => 'PROD: 4LC Dies Transferred to MTN',
             'ppm_in_progress' => 'MTN Dies: PPM In Progress',
-            '4lc_in_progress' => 'MTN Dies: 4LC In Progress',
             'additional_repair' => 'MTN Dies: Additional Repair Needed',
             'ppm_completed' => 'PPM Completed - Awaiting Transfer Back',
-            '4lc_completed' => '4LC Completed - Awaiting Transfer Back',
             'special_repair' => 'Special Repair In Progress',
+            default => null,
+        };
+    }
+
+    public function getLot4AlertStatusLabelAttribute()
+    {
+        return match ($this->lot4_alert_status) {
+            '4lc_scheduled' => 'MTN Dies: 4 Lot Check Scheduled',
+            '4lc_approved' => 'PPIC: 4 Lot Check Approved',
+            'transferred_to_mtn_4lc' => 'PROD: 4LC Dies Transferred to MTN',
+            '4lc_in_progress' => 'MTN Dies: 4LC In Progress',
+            '4lc_additional_repair' => 'MTN Dies: 4LC Additional Repair Needed',
+            '4lc_completed' => '4LC Completed - Awaiting Transfer Back',
             default => null,
         };
     }

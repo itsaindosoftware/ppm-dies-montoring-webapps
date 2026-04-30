@@ -392,14 +392,15 @@ class ScheduleController extends Controller
 
             // Use monitoring service to update die record and set ppm_alert_status when relevant.
             $die = DieModel::find($validated['die_id']);
+            $isGroup4LotFlow = $die ? $this->isGroup4LotFlow($die) : false;
             $shouldSetPpmScheduleFromCalendar =
                 $die && (
                     $validated['field'] === 'ppm_date' ||
-                    ($validated['field'] === 'lot4_check_date' && (bool) $die->is_4lot_check)
+                    ($validated['field'] === 'lot4_check_date' && $isGroup4LotFlow)
                 );
 
             if ($shouldSetPpmScheduleFromCalendar) {
-                $alertStatus = ($validated['field'] === 'lot4_check_date' && (bool) $die->is_4lot_check)
+                $alertStatus = ($validated['field'] === 'lot4_check_date' && $isGroup4LotFlow)
                     ? '4lc_scheduled'
                     : 'ppm_scheduled';
 
@@ -459,5 +460,21 @@ class ScheduleController extends Controller
             'pic' => 'pic',
             default => $field,
         };
+    }
+
+    private function isGroup4LotFlow(DieModel $die): bool
+    {
+        if ((bool) $die->is_4lot_check) {
+            return true;
+        }
+
+        if (!$die->group_name) {
+            return false;
+        }
+
+        return DieModel::query()
+            ->where('group_name', $die->group_name)
+            ->where('is_4lot_check', true)
+            ->exists();
     }
 }
