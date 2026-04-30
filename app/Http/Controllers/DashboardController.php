@@ -24,9 +24,7 @@ class DashboardController extends Controller
     public function index()
     {
         $stats = $this->monitoringService->getDashboardStats();
-        $stats['dies_4lot_check'] = DieModel::query()
-            ->where('is_4lot_check', 1)
-            ->count();
+        $stats['dies_4lot_check'] = $this->monitoringService->getQualified4LotCheckCount();
 
         $diesByTonnage = $this->monitoringService->getDiesByTonnage();
         $criticalDies = $this->monitoringService->getCriticalDies(10);

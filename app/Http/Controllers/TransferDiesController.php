@@ -13,9 +13,22 @@ class TransferDiesController extends Controller
         'red_alerted',
         'lot_date_set',
         'ppm_scheduled',
+        'schedule_approved',
+    ];
+
+    private const TO_MTN_ELIGIBLE_LOT4_STATUSES = [
         '4lc_scheduled',
         '4lc_approved',
-        'schedule_approved',
+    ];
+
+    private const TO_MTN_PENDING_4LC_CONFIRMED_STATUSES = [
+        '4lc_approved',
+    ];
+
+    private const AT_MTN_4LC_STATUSES = [
+        'transferred_to_mtn_4lc',
+        '4lc_in_progress',
+        '4lc_additional_repair',
     ];
 
     protected DieMonitoringService $monitoringService;
@@ -34,20 +47,57 @@ class TransferDiesController extends Controller
         $user = $request->user();
         $tab = $request->input('tab', 'to_mtn');
 
-        // Dies ready to transfer TO MTN based on allowed workflow statuses.
-        $toMtn = DieModel::with(['machineModel.tonnageStandard', 'customer'])
+        $baseQuery = DieModel::with(['machineModel.tonnageStandard', 'customer'])
             ->active()
-            ->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
-            ->get()
+            ->where(function ($query) {
+                $query->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
+                    ->orWhereIn('lot4_alert_status', self::TO_MTN_ELIGIBLE_LOT4_STATUSES)
+                    ->orWhereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_LOT4_STATUSES);
+            })
+            ->get();
+
+        // Dies ready to transfer TO MTN (regular red-alert flow).
+        $toMtn = $baseQuery
             ->filter(function ($die) {
-                // return $die instanceof DieModel && $die->ppm_status === 'red';
                 if (!$die instanceof DieModel) {
                     return false;
                 }
 
-                $is4LotReady = $die->is_4lot_check && $die->ppm_alert_status === '4lc_approved';
+                $isAtMtnFor4Lc = in_array((string) $die->lot4_alert_status, self::AT_MTN_4LC_STATUSES, true)
+                    || in_array((string) $die->ppm_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress'], true);
 
-                return $die->ppm_status === 'red' || $is4LotReady;
+                return $die->ppm_status === 'red'
+                    && (string) $die->ppm_alert_status === 'schedule_approved'
+                    && !empty($die->schedule_approved_at)
+                    && (!$die->transferred_at || $isAtMtnFor4Lc);
+            })
+            ->map(function ($die) {
+                return $die instanceof DieModel ? $this->formatDie($die) : null;
+            })
+            ->filter()
+            ->values();
+
+        // Dies ready to transfer TO MTN (4 Lot Check flow - confirmed by PPIC).
+        $toMtn4Lc = $baseQuery
+            ->filter(function ($die) {
+                if (!$die instanceof DieModel) {
+                    return false;
+                }
+
+                $is4LcReady = !empty($die->lot4_schedule_approved_at) && (
+                    in_array($die->lot4_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true)
+                    || (in_array($die->ppm_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true)
+                        && !in_array((string) $die->lot4_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair', '4lc_completed'], true))
+                );
+
+                $is4LcAlreadyTransferred = in_array((string) $die->lot4_alert_status, [
+                    'transferred_to_mtn_4lc',
+                    '4lc_in_progress',
+                    '4lc_additional_repair',
+                    '4lc_completed',
+                ], true);
+
+                return $is4LcReady && !$is4LcAlreadyTransferred;
             })
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -58,7 +108,11 @@ class TransferDiesController extends Controller
         // Dies ready to transfer BACK to Production (ppm_completed status - MTN Dies role)
         $toProduction = DieModel::with(['machineModel.tonnageStandard', 'customer'])
             ->active()
-            ->whereIn('ppm_alert_status', ['ppm_completed', '4lc_completed'])
+            ->where(function ($query) {
+                $query->whereIn('ppm_alert_status', ['ppm_completed'])
+                    ->orWhereIn('lot4_alert_status', ['4lc_completed'])
+                    ->orWhereIn('ppm_alert_status', ['4lc_completed']);
+            })
             ->get()
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -69,7 +123,11 @@ class TransferDiesController extends Controller
         // Dies currently at MTN Dies (transferred_to_mtn, ppm_in_progress, additional_repair)
         $atMtn = DieModel::with(['machineModel.tonnageStandard', 'customer'])
             ->active()
-            ->whereIn('ppm_alert_status', ['transferred_to_mtn', 'transferred_to_mtn_4lc', 'ppm_in_progress', '4lc_in_progress', 'additional_repair'])
+            ->where(function ($query) {
+                $query->whereIn('ppm_alert_status', ['transferred_to_mtn', 'ppm_in_progress', 'additional_repair'])
+                    ->orWhereIn('lot4_alert_status', ['transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair'])
+                    ->orWhereIn('ppm_alert_status', ['transferred_to_mtn_4lc', '4lc_in_progress']);
+            })
             ->get()
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -100,12 +158,14 @@ class TransferDiesController extends Controller
 
         return Inertia::render('Transfer/Index', [
             'toMtn' => $toMtn,
+            'toMtn4Lc' => $toMtn4Lc,
             'toProduction' => $toProduction,
             'atMtn' => $atMtn,
             'recentTransfers' => $recentTransfers,
             'tab' => $tab,
             'stats' => [
                 'pending_to_mtn' => $toMtn->count(),
+                'pending_to_mtn_4lc' => $toMtn4Lc->count(),
                 'at_mtn' => $atMtn->count(),
                 'pending_to_prod' => $toProduction->count(),
             ],
@@ -121,6 +181,7 @@ class TransferDiesController extends Controller
             'from_location' => 'nullable|string|max:100',
             'to_location' => 'nullable|string|max:100',
             'transferred_by' => 'nullable|string|max:100',
+            'transfer_flow' => 'nullable|in:ppm,4lc',
         ]);
 
         $this->monitoringService->transferDiesToMtn($die, $validated);
@@ -153,22 +214,43 @@ class TransferDiesController extends Controller
             'die_ids' => 'required|array|min:1',
             'die_ids.*' => 'exists:dies,id',
             'transferred_by' => 'nullable|string|max:100',
+            'transfer_flow' => 'nullable|in:ppm,4lc',
         ]);
 
+        $requestedFlow = $validated['transfer_flow'] ?? 'ppm';
+
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
+            ->where(function ($query) {
+                $query->whereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_STATUSES)
+                    ->orWhereIn('lot4_alert_status', self::TO_MTN_ELIGIBLE_LOT4_STATUSES)
+                    ->orWhereIn('ppm_alert_status', self::TO_MTN_ELIGIBLE_LOT4_STATUSES);
+            })
             ->get();
 
         $dies = $dies
-            ->filter(function ($die) {
-                // return $die instanceof DieModel && $die->ppm_status === 'red';
+            ->filter(function ($die) use ($requestedFlow) {
                 if (!$die instanceof DieModel) {
                     return false;
                 }
 
-                $is4LotReady = $die->is_4lot_check && $die->ppm_alert_status === '4lc_approved';
+                $is4LotReady = $die->lot4_alert_status === '4lc_approved' || $die->ppm_alert_status === '4lc_approved';
+                $is4LotAlreadyTransferred = in_array((string) $die->lot4_alert_status, [
+                    'transferred_to_mtn_4lc',
+                    '4lc_in_progress',
+                    '4lc_additional_repair',
+                    '4lc_completed',
+                ], true);
 
-                return $die->ppm_status === 'red' || $is4LotReady;
+                if ($requestedFlow === 'ppm') {
+                    return $die->ppm_status === 'red'
+                        && in_array((string) $die->ppm_alert_status, self::TO_MTN_ELIGIBLE_STATUSES, true);
+                }
+
+                if ($is4LotReady) {
+                    return !$is4LotAlreadyTransferred;
+                }
+
+                return !$die->transferred_at && $die->ppm_status === 'red';
             })
             ->values();
 
@@ -185,6 +267,7 @@ class TransferDiesController extends Controller
 
             $this->monitoringService->transferDiesToMtn($die, [
                 'transferred_by' => $validated['transferred_by'] ?? auth()->user()?->name,
+                'transfer_flow' => $requestedFlow,
             ]);
             $count++;
         }
@@ -204,7 +287,11 @@ class TransferDiesController extends Controller
         ]);
 
         $dies = DieModel::whereIn('id', $validated['die_ids'])
-            ->whereIn('ppm_alert_status', ['ppm_completed', '4lc_completed'])
+            ->where(function ($query) {
+                $query->whereIn('ppm_alert_status', ['ppm_completed'])
+                    ->orWhereIn('lot4_alert_status', ['4lc_completed'])
+                    ->orWhereIn('ppm_alert_status', ['4lc_completed']);
+            })
             ->get();
 
         if ($dies->isEmpty()) {
@@ -243,12 +330,15 @@ class TransferDiesController extends Controller
             'ppm_status' => $die->ppm_status,
             'ppm_alert_status' => $die->ppm_alert_status,
             'ppm_alert_status_label' => $die->ppm_alert_status_label,
+            'lot4_alert_status' => $die->lot4_alert_status,
+            'lot4_alert_status_label' => $die->lot4_alert_status_label,
             'is_4lot_check' => (bool) $die->is_4lot_check,
             'group_name' => $die->group_name,
             'transferred_at' => $die->transferred_at?->format('d-M-Y H:i'),
             'transferred_by' => $die->transferred_by,
             'transfer_from_location' => $die->transfer_from_location,
             'red_alerted_at' => $die->red_alerted_at?->format('d-M-Y H:i'),
+            'lot4_schedule_approved_at' => $die->lot4_schedule_approved_at?->format('d-M-Y H:i'),
             'ppm_finished_at' => $die->ppm_finished_at?->format('d-M-Y H:i'),
         ];
     }

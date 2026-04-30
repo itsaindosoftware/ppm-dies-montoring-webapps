@@ -64,6 +64,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Flow: Processing PPM → "The Process is Normal?" → No → Additional Repair Dies
         Route::post('dies/{die}/additional-repair', [DieController::class, 'markAdditionalRepair'])->name('dies.additional-repair');
         Route::post('dies/{die}/resume-ppm', [DieController::class, 'resumePpmAfterRepair'])->name('dies.resume-ppm');
+        // Dedicated 4LC repair flow actions
+        Route::post('dies/{die}/additional-repair-4lc', [DieController::class, 'markAdditionalRepair4lc'])->name('dies.additional-repair-4lc');
+        Route::post('dies/{die}/resume-4lc', [DieController::class, 'resume4lcAfterRepair'])->name('dies.resume-4lc');
         // Cancel / Reschedule PPM
         Route::post('dies/{die}/cancel-schedule', [DieController::class, 'cancelSchedule'])->name('dies.cancel-schedule');
         Route::post('dies/{die}/reschedule', [DieController::class, 'reschedule'])->name('dies.reschedule');

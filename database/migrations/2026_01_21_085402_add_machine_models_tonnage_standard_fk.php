@@ -5,14 +5,17 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
     public function up(): void
     {
-        if (! Schema::hasTable('machine_models') || ! Schema::hasTable('tonnage_standards')) {
+        if (!Schema::hasTable('machine_models') || !Schema::hasTable('tonnage_standards')) {
+            return;
+        }
+
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
             return;
         }
 
@@ -42,7 +45,11 @@ return new class extends Migration
      */
     public function down(): void
     {
-        if (! Schema::hasTable('machine_models')) {
+        if (!Schema::hasTable('machine_models')) {
+            return;
+        }
+
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
             return;
         }
 

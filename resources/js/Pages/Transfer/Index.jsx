@@ -1,14 +1,15 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 
-export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recentTransfers, tab, stats }) {
+export default function TransferIndex({ auth, toMtn, toMtn4Lc, toProduction, atMtn, recentTransfers, tab, stats }) {
     const [activeTab, setActiveTab] = useState(tab || 'to_mtn');
     const [selectedIds, setSelectedIds] = useState([]);
     const [processing, setProcessing] = useState(false);
 
     const tabs = [
         { key: 'to_mtn', label: 'Pending Transfer to MTN', count: stats.pending_to_mtn, color: 'red' },
+        { key: 'to_mtn_4lc', label: 'Pending Transfer to MTN (4LC)', count: stats.pending_to_mtn_4lc || 0, color: 'orange' },
         { key: 'at_mtn', label: 'Currently at MTN', count: stats.at_mtn, color: 'yellow' },
         { key: 'to_prod', label: 'Pending Return to Prod', count: stats.pending_to_prod, color: 'green' },
         { key: 'history', label: 'Recent History', count: recentTransfers?.length || 0, color: 'gray' },
@@ -16,20 +17,40 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
 
     const currentData = {
         to_mtn: toMtn,
+        to_mtn_4lc: toMtn4Lc,
         at_mtn: atMtn,
         to_prod: toProduction,
         history: recentTransfers,
     }[activeTab] || [];
+
+    const canTransferInCurrentTab = () => activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc' || activeTab === 'to_prod';
+    const showSelectionColumn = activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc' || activeTab === 'to_prod';
+    const showSplitStatusColumns = ['at_mtn', 'to_mtn', 'to_mtn_4lc', 'to_prod', 'history'].includes(activeTab);
+    const selectableCount = currentData.filter(die => canTransferInCurrentTab(die)).length;
+    const totalColumns = (showSelectionColumn ? 1 : 0) + 5 + (showSplitStatusColumns ? 2 : 1) + 2;
+    const statusBadgeClass = (status) => {
+        if (status === 'red_alerted') return 'bg-red-100 text-red-700';
+        if (['ppm_completed', '4lc_completed'].includes(status)) return 'bg-green-100 text-green-700';
+        if (['ppm_in_progress', '4lc_in_progress'].includes(status)) return 'bg-blue-100 text-blue-700';
+        if (status === 'transferred_to_mtn_4lc') return 'bg-orange-100 text-orange-700';
+        if (!status) return 'bg-green-100 text-green-700';
+
+        return 'bg-yellow-100 text-yellow-700';
+    };
 
     const toggleSelect = (id) => {
         setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
     };
 
     const toggleAll = () => {
-        if (selectedIds.length === currentData.length) {
+        const selectableIds = currentData
+            .filter(die => canTransferInCurrentTab(die))
+            .map(die => die.id);
+
+        if (selectedIds.length === selectableIds.length) {
             setSelectedIds([]);
         } else {
-            setSelectedIds(currentData.map(d => d.id));
+            setSelectedIds(selectableIds);
         }
     };
 
@@ -39,6 +60,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
         router.post(route('transfer-dies.batch-to-mtn'), {
             die_ids: selectedIds,
             transferred_by: auth.user.name,
+            transfer_flow: activeTab === 'to_mtn_4lc' ? '4lc' : 'ppm',
         }, {
             onFinish: () => { setProcessing(false); setSelectedIds([]); },
         });
@@ -57,6 +79,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
     const handleSingleTransferToMtn = (die) => {
         router.post(route('transfer-dies.to-mtn', die.encrypted_id), {
             transferred_by: auth.user.name,
+            transfer_flow: activeTab === 'to_mtn_4lc' ? '4lc' : 'ppm',
         });
     };
 
@@ -64,7 +87,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
         router.post(route('transfer-dies.to-production', die.encrypted_id), {});
     };
 
-    const is4LotReady = (die) => die.is_4lot_check && die.ppm_alert_status === '4lc_approved';
+    const is4LotReady = (die) => die.lot4_alert_status === '4lc_approved' || die.ppm_alert_status === '4lc_approved';
 
     const isProduction = auth.user.role === 'production' || auth.user.role === 'admin';
     const isMtnDies = auth.user.role === 'mtn_dies' || auth.user.role === 'admin';
@@ -78,7 +101,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
 
             <div className="py-6 px-6">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                     {tabs.map(t => (
                         <button
                             key={t.key}
@@ -92,6 +115,7 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                             <p className="text-sm text-gray-500 dark:text-gray-400">{t.label}</p>
                             <p className={`text-2xl font-bold ${
                                 t.color === 'red' ? 'text-red-600' :
+                                t.color === 'orange' ? 'text-orange-600' :
                                 t.color === 'yellow' ? 'text-yellow-600' :
                                 t.color === 'green' ? 'text-green-600' : 'text-gray-600'
                             }`}>
@@ -108,13 +132,13 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                             {selectedIds.length} die(s) selected
                         </span>
                         <div className="flex gap-2">
-                            {activeTab === 'to_mtn' && isProduction && (
+                            {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') && isProduction && (
                                 <button
                                     onClick={handleBatchTransferToMtn}
                                     disabled={processing}
                                     className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
                                 >
-                                    {processing ? 'Transferring...' : `Transfer ${selectedIds.length} to MTN Dies`}
+                                    {processing ? 'Transferring...' : `Transfer ${selectedIds.length} to MTN Dies${activeTab === 'to_mtn_4lc' ? ' (4 LC)' : ''}`}
                                 </button>
                             )}
                             {activeTab === 'to_prod' && isMtnDies && (
@@ -139,10 +163,10 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead className="bg-gray-50 dark:bg-gray-900">
                                 <tr>
-                                    {(activeTab === 'to_mtn' || activeTab === 'to_prod') && (
+                                    {showSelectionColumn && (
                                         <th className="px-4 py-3">
                                             <input type="checkbox" onChange={toggleAll}
-                                                checked={currentData.length > 0 && selectedIds.length === currentData.length}
+                                                checked={selectableCount > 0 && selectedIds.length === selectableCount}
                                                 className="rounded border-gray-300 text-blue-600"
                                             />
                                         </th>
@@ -152,9 +176,16 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Line</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    {showSplitStatusColumns ? (
+                                        <>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status (PPM)</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status (4LC)</th>
+                                        </>
+                                    ) : (
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    )}
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                        {activeTab === 'to_mtn' ? 'Red Alerted' :
+                                        {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') ? 'Ready Date' :
                                          activeTab === 'history' ? 'Returned' : 'Transferred'}
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -163,19 +194,28 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                 {currentData.length === 0 ? (
                                     <tr>
-                                        <td colSpan="9" className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                                        <td colSpan={totalColumns} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                                             No dies in this category.
                                         </td>
                                     </tr>
-                                ) : currentData.map(die => (
+                                ) : currentData.map(die => {
+                                    const transferStatus = die.lot4_alert_status || die.ppm_alert_status;
+                                    const transferStatusLabel = die.lot4_alert_status_label || die.ppm_alert_status_label || transferStatus;
+                                    const isTransferable = canTransferInCurrentTab();
+
+                                    return (
                                     <tr key={die.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        {(activeTab === 'to_mtn' || activeTab === 'to_prod') && (
+                                        {showSelectionColumn && (
                                             <td className="px-4 py-3">
-                                                <input type="checkbox"
-                                                    checked={selectedIds.includes(die.id)}
-                                                    onChange={() => toggleSelect(die.id)}
-                                                    className="rounded border-gray-300 text-blue-600"
-                                                />
+                                                {isTransferable ? (
+                                                    <input type="checkbox"
+                                                        checked={selectedIds.includes(die.id)}
+                                                        onChange={() => toggleSelect(die.id)}
+                                                        className="rounded border-gray-300 text-blue-600"
+                                                    />
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">-</span>
+                                                )}
                                             </td>
                                         )}
                                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -185,31 +225,40 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{die.customer}</td>
                                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{die.line || '-'}</td>
                                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{die.location || '-'}</td>
-                                        <td className="px-4 py-3">
-                                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                die.ppm_alert_status === 'red_alerted' ? 'bg-red-100 text-red-700' :
-                                                ['ppm_completed', '4lc_completed'].includes(die.ppm_alert_status) ? 'bg-green-100 text-green-700' :
-                                                ['ppm_in_progress', '4lc_in_progress'].includes(die.ppm_alert_status) ? 'bg-blue-100 text-blue-700' :
-                                                ['transferred_to_mtn_4lc'].includes(die.ppm_alert_status) ? 'bg-orange-100 text-orange-700' :
-                                                !die.ppm_alert_status ? 'bg-green-100 text-green-700' :
-                                                'bg-yellow-100 text-yellow-700'
-                                            }`}>
-                                                {die.ppm_alert_status_label || die.ppm_alert_status || 'Returned to Production'}
-                                            </span>
-                                        </td>
+                                        {showSplitStatusColumns ? (
+                                            <>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(die.ppm_alert_status)}`}>
+                                                        {die.ppm_alert_status_label || die.ppm_alert_status || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(die.lot4_alert_status)}`}>
+                                                        {die.lot4_alert_status_label || die.lot4_alert_status || '-'}
+                                                    </span>
+                                                </td>
+                                            </>
+                                        ) : (
+                                            <td className="px-4 py-3">
+                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(transferStatus)}`}>
+                                                    {transferStatusLabel || 'Returned to Production'}
+                                                </span>
+                                            </td>
+                                        )}
                                         <td className="px-4 py-3 text-sm text-gray-500">
-                                            {activeTab === 'to_mtn' ? die.red_alerted_at :
+                                            {activeTab === 'to_mtn_4lc' ? (die.lot4_schedule_approved_at || die.red_alerted_at || '-') :
+                                            activeTab === 'to_mtn' ? (die.red_alerted_at || die.transferred_at || '-') :
                                              activeTab === 'history' ? die.returned_at :
                                              die.transferred_at || '-'}
                                         </td>
                                         <td className="px-4 py-3">
-                                            {activeTab === 'to_mtn' && isProduction && (
+                                            {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') && isProduction && (
                                                 <button
                                                     onClick={() => handleSingleTransferToMtn(die)}
                                                     className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
                                                 >
                                                     {/* Transfer to MTN */}
-                                                    {is4LotReady(die) ? 'Transfer to MTN (4 LC)' : 'Transfer to MTN'}
+                                                    {activeTab === 'to_mtn_4lc' ? 'Transfer to MTN (4 LC)' : 'Transfer to MTN'}
                                                 </button>
                                             )}
                                             {activeTab === 'to_prod' && isMtnDies && (
@@ -228,7 +277,8 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
                                             )}
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })} 
                             </tbody>
                         </table>
                     </div>
@@ -236,4 +286,4 @@ export default function TransferIndex({ auth, toMtn, toProduction, atMtn, recent
             </div>
         </AppLayout>
     );
-}
+} 
