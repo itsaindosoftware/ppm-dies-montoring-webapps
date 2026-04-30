@@ -26,6 +26,11 @@ class DieModel extends Model
         'cam_pierce',
     ];
 
+    const FOUR_LOT_CHECK_PROCESS_TYPES = [
+        'pierce',
+        'trim',
+    ];
+
     protected $fillable = [
         'part_number',
         'part_name',
@@ -226,7 +231,7 @@ class DieModel extends Model
      */
     public function getPpmProcessProgressAttribute(): array
     {
-        $processes = $this->dieProcesses;
+        $processes = $this->dieProcesses->whereNotIn('process_type', self::FOUR_LOT_CHECK_PROCESS_TYPES);
         $total = $processes->count();
         $completed = $processes->where('ppm_status', 'completed')->count();
         $inProgress = $processes->where('ppm_status', 'in_progress')->count();
@@ -246,7 +251,7 @@ class DieModel extends Model
      */
     public function getLotCheckProgressAttribute(): array
     {
-        $processes = $this->dieProcesses;
+        $processes = $this->dieProcesses->whereIn('process_type', self::FOUR_LOT_CHECK_PROCESS_TYPES);
         $total = $processes->count();
         $completed = $processes->where('lot_check_status', 'completed')->count();
         $inProgress = $processes->where('lot_check_status', 'in_progress')->count();

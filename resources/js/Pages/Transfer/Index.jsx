@@ -205,7 +205,8 @@ export default function TransferIndex({ auth, toMtn, toMtn4Lc, toProduction, atM
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm text-gray-500">
-                                            {(activeTab === 'to_mtn' || activeTab === 'to_mtn_4lc') ? (die.red_alerted_at || die.transferred_at || '-') :
+                                            {activeTab === 'to_mtn_4lc' ? (die.lot4_schedule_approved_at || die.red_alerted_at || '-') :
+                                            activeTab === 'to_mtn' ? (die.red_alerted_at || die.transferred_at || '-') :
                                              activeTab === 'history' ? die.returned_at :
                                              die.transferred_at || '-'}
                                         </td>

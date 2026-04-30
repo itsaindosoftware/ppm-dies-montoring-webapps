@@ -865,8 +865,8 @@ class DieController extends Controller
         }
 
         $validated = $request->validate([
-            'process_types' => 'nullable|array',
-            'process_types.*' => 'in:blank_pierce,draw,embos,trim,form,flang,restrike,pierce,cam_pierce',
+            'process_types' => 'nullable|array|max:7',
+            'process_types.*' => 'in:blank_pierce,draw,embos,form,flang,restrike,cam_pierce',
         ]);
 
         $this->monitoringService->startPpmProcessing($die, $validated['process_types'] ?? []);

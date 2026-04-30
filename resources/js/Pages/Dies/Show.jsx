@@ -22,6 +22,10 @@ export default function DieShow({ auth, die }) {
         () => PROCESS_TYPES.filter((p) => FOUR_LOT_CHECK_PROCESS_TYPES.includes(p.value)),
         []
     );
+    const ppmProcessTypes = useMemo(
+        () => PROCESS_TYPES.filter((p) => !FOUR_LOT_CHECK_PROCESS_TYPES.includes(p.value)).slice(0, 7),
+        []
+    );
 
     // Check roles
     const canEditDies = ['admin', 'mtn_dies'].includes(auth.user.role);
@@ -39,9 +43,13 @@ export default function DieShow({ auth, die }) {
         ? (lot4ScheduledDate ? '4lc_scheduled' : null)
         : (rawLot4Status || (['4lc_scheduled', '4lc_approved', 'transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair', '4lc_completed'].includes(die.ppm_alert_status) ? die.ppm_alert_status : null));
     const isGroup4LotFlow = Boolean(die.is_group_4lot_flow || lot4Status);
-    const isPpmTransferredToMtn = die.ppm_alert_status === 'transferred_to_mtn' || isLegacyPpmTransferInLot4Status;
     const is4lcTransferredToMtn = lot4Status === 'transferred_to_mtn_4lc' && !!die.lot4_schedule_approved_at;
     const is4lcTransferredFromProduction = lot4Status === 'transferred_to_mtn_4lc' && !!die.transferred_at;
+    const isPpmTransferredToMtn =
+        die.ppm_alert_status === 'transferred_to_mtn' ||
+        ['ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status) ||
+        isLegacyPpmTransferInLot4Status ||
+        is4lcTransferredFromProduction;
     const isPpmFlowActive = isPpmTransferredToMtn || ['ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status);
     const is4lcFlowActive = is4lcTransferredToMtn || ['4lc_in_progress', '4lc_additional_repair'].includes(lot4Status);
     const isStartPpmBlocked =
@@ -55,16 +63,41 @@ export default function DieShow({ auth, die }) {
     !die.transferred_at;
 
     // Keep Start/Record actions hidden while there are unfinished processes in the currently active flow.
-    const hasActivePpmProcesses = die.die_processes && die.die_processes.length > 0 && !die.ppm_process_progress?.all_completed;
-    const hasActive4lcProcesses = die.die_processes && die.die_processes.length > 0 && !die.lot_check_progress?.all_completed;
+    const ppmProcesses = (die.die_processes || [])
+        .filter((proc) => !FOUR_LOT_CHECK_PROCESS_TYPES.includes(proc.process_type))
+        .slice(0, 7);
+    const hasActivePpmProcesses = ppmProcesses.length > 0 && !die.ppm_process_progress?.all_completed;
+    const lot4Processes = (die.die_processes || []).filter((proc) =>
+        FOUR_LOT_CHECK_PROCESS_TYPES.includes(proc.process_type)
+    );
+    const hasActive4lcProcesses = lot4Processes.length > 0 && !die.lot_check_progress?.all_completed;
     const hasActiveProcesses = hasActivePpmProcesses || hasActive4lcProcesses;
+    const isPpmProgressCompleted = !!die.ppm_process_progress?.all_completed;
+    const is4lcProgressCompleted = !!die.lot_check_progress?.all_completed;
 
     const showPpmProcessProgress =
-        !is4lcFlowActive &&
-        !!die.ppm_started_at && 
-        ['ppm_in_progress', 'additional_repair'].includes(die.ppm_alert_status) &&
-        die.die_processes &&
-        die.die_processes.length > 0;
+        ppmProcesses.length > 0 &&
+        (
+            !!die.ppm_started_at ||
+            ['ppm_in_progress', 'additional_repair', 'ppm_completed'].includes(die.ppm_alert_status) ||
+            ppmProcesses.some((proc) => proc.ppm_status !== 'pending')
+        ) &&
+        (
+            !isPpmProgressCompleted ||
+            (lot4Processes.length > 0 && !is4lcProgressCompleted)
+        );
+
+    const show4lcProcessProgress =
+        lot4Processes.length > 0 &&
+        (
+            !!die.lot4_started_at ||
+            ['4lc_in_progress', '4lc_additional_repair', '4lc_completed'].includes(lot4Status) ||
+            lot4Processes.some((proc) => proc.lot_check_status !== 'pending')
+        ) &&
+        (
+            !is4lcProgressCompleted ||
+            (ppmProcesses.length > 0 && !isPpmProgressCompleted)
+        );
 
     const { data, setData, post, processing, errors, reset } = useForm({
         ppm_date: new Date().toISOString().split('T')[0],
@@ -144,7 +177,7 @@ export default function DieShow({ auth, die }) {
                 !!lot4ScheduledDate &&
                 ['4lc_scheduled', '4lc_approved'].includes(lot4Status);
     // const canStartPpmProcessing = isMtnDies && die.ppm_alert_status === 'transferred_to_mtn' && !!die.schedule_approved_at && !!die.transferred_at;
-        const canStartPpmProcessing = isMtnDies && !isStartPpmBlocked;
+        const canStartPpmProcessing = isMtnDies && !isStartPpmBlocked && !die.ppm_started_at;
         const canStart4lcProcessing = isMtnDies && !isStart4lcBlocked;
     const ppmHistoryEntries = useMemo(
         () => (die.ppmHistories || []).filter((history) =>
@@ -1075,7 +1108,7 @@ export default function DieShow({ auth, die }) {
 
                                 {/* Process List */}
                                 <div className="space-y-2">
-                                    {die.die_processes.map((proc) => (
+                                    {ppmProcesses.map((proc) => (
                                         <div key={proc.id} className={`flex items-center justify-between p-3 rounded-lg border ${
                                             proc.ppm_status === 'completed' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
                                             proc.ppm_status === 'in_progress' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
@@ -1136,7 +1169,7 @@ export default function DieShow({ auth, die }) {
                         )}
 
                         {/* Multi-Process 4LC Progress Card */}
-                        {lot4Status && die.die_processes && die.die_processes.length > 0 && (
+                        {show4lcProcessProgress && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                                     ⚙️ 4LC Process Progress
@@ -1164,7 +1197,7 @@ export default function DieShow({ auth, die }) {
                                 )}
 
                                 <div className="space-y-2">
-                                    {die.die_processes.map((proc) => (
+                                    {lot4Processes.map((proc) => (
                                         <div key={proc.id} className={`flex items-center justify-between p-3 rounded-lg border ${
                                             proc.lot_check_status === 'completed' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
                                             proc.lot_check_status === 'in_progress' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
@@ -2217,7 +2250,7 @@ export default function DieShow({ auth, die }) {
                                         Select Process Types for PPM:
                                     </label>
                                     <div className="grid grid-cols-2 gap-2">
-                                        {PROCESS_TYPES.map((p) => (
+                                        {ppmProcessTypes.map((p) => (
                                             <label key={p.value} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition ${
                                                 selectedProcessTypes.includes(p.value)
                                                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-400'

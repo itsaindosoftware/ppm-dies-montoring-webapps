@@ -833,13 +833,6 @@ class DieMonitoringService
         $die->update($updateData);
 
         if ($die->group_name) {
-            $advancedStatuses = [
-                'transferred_to_mtn',
-                'ppm_in_progress',
-                'additional_repair',
-                'ppm_completed',
-            ];
-
             $advancedLot4Statuses = [
                 'transferred_to_mtn_4lc',
                 '4lc_in_progress',
@@ -849,10 +842,6 @@ class DieMonitoringService
 
             $groupMembers = DieModel::where('group_name', $die->group_name)
                 ->where('id', '!=', $die->id)
-                ->where(function ($query) use ($advancedStatuses) {
-                    $query->whereNull('ppm_alert_status')
-                        ->orWhereNotIn('ppm_alert_status', $advancedStatuses);
-                })
                 ->where(function ($query) use ($advancedLot4Statuses) {
                     $query->whereNull('lot4_alert_status')
                         ->orWhereNotIn('lot4_alert_status', $advancedLot4Statuses);
@@ -1458,29 +1447,42 @@ class DieMonitoringService
     {
         $isLotCheck = $flow === 'lot_check';
 
-        // Clear any existing pending processes from previous cycle
-        $statusColumn = $isLotCheck ? 'lot_check_status' : 'ppm_status';
-        $die->dieProcesses()->where($statusColumn, '!=', 'completed')->delete();
+        $allowedTypes = $isLotCheck
+            ? ['pierce', 'trim']
+            : ['blank_pierce', 'draw', 'embos', 'form', 'flang', 'restrike', 'cam_pierce'];
 
-        foreach ($processTypes as $order => $processType) {
+        $normalizedTypes = array_values(array_unique(array_filter($processTypes, function ($type) use ($allowedTypes) {
+            return in_array($type, $allowedTypes, true);
+        })));
+
+        if (!$isLotCheck) {
+            $normalizedTypes = array_slice($normalizedTypes, 0, 7);
+        }
+
+        foreach ($normalizedTypes as $order => $processType) {
+            $updateData = $isLotCheck
+                ? [
+                    'lot_check_status' => 'pending',
+                    'lot_check_started_at' => null,
+                    'lot_check_completed_at' => null,
+                    'lot_check_history_id' => null,
+                    'lot_check_completed_by' => null,
+                ]
+                : [
+                    'ppm_status' => 'pending',
+                    'ppm_started_at' => null,
+                    'ppm_completed_at' => null,
+                    'ppm_history_id' => null,
+                    'completed_by' => null,
+                ];
+
             DieProcess::updateOrCreate(
                 [
                     'die_id' => $die->id,
                     'process_type' => $processType,
                     'process_order' => $order + 1,
                 ],
-                [
-                    'ppm_status' => $isLotCheck ? 'pending' : 'pending',
-                    'ppm_started_at' => $isLotCheck ? null : null,
-                    'ppm_completed_at' => $isLotCheck ? null : null,
-                    'ppm_history_id' => $isLotCheck ? null : null,
-                    'completed_by' => $isLotCheck ? null : null,
-                    'lot_check_status' => $isLotCheck ? 'pending' : 'pending',
-                    'lot_check_started_at' => $isLotCheck ? null : null,
-                    'lot_check_completed_at' => $isLotCheck ? null : null,
-                    'lot_check_history_id' => $isLotCheck ? null : null,
-                    'lot_check_completed_by' => $isLotCheck ? null : null,
-                ]
+                $updateData
             );
         }
     }
@@ -1494,8 +1496,11 @@ class DieMonitoringService
         return DB::transaction(function () use ($process, $data) {
             $die = $process->die;
             $die->load(['machineModel.tonnageStandard', 'customer']);
-            $isLotCheck = ($data['maintenance_type'] ?? null) === '4lc_maintenance'
-                || in_array($die->lot4_alert_status, ['4lc_in_progress', '4lc_additional_repair'], true);
+            $isLotCheckProcessType = in_array($process->process_type, ['pierce', 'trim'], true);
+            $isLotCheck = $isLotCheckProcessType && (
+                ($data['maintenance_type'] ?? null) === '4lc_maintenance'
+                || in_array($die->lot4_alert_status, ['4lc_in_progress', '4lc_additional_repair'], true)
+            );
 
             // Record individual process PPM history
             $ppmCount = ($die->ppm_count ?? 0) + 1;
@@ -1677,7 +1682,9 @@ class DieMonitoringService
     public function startProcess(DieProcess $process): void
     {
         $die = $process->die;
-        $isLotCheck = in_array($die->lot4_alert_status, ['4lc_in_progress', '4lc_additional_repair'], true);
+        $isLotCheckProcessType = in_array($process->process_type, ['pierce', 'trim'], true);
+        $isLotCheck = $isLotCheckProcessType
+            && in_array($die->lot4_alert_status, ['4lc_in_progress', '4lc_additional_repair'], true);
 
         $process->update($isLotCheck ? [
             'lot_check_status' => 'in_progress',

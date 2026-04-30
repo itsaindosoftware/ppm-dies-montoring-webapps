@@ -82,7 +82,14 @@ class TransferDiesController extends Controller
                     || (in_array($die->ppm_alert_status, self::TO_MTN_PENDING_4LC_CONFIRMED_STATUSES, true)
                         && !in_array((string) $die->lot4_alert_status, ['transferred_to_mtn_4lc', '4lc_in_progress', '4lc_additional_repair', '4lc_completed'], true));
 
-                return !$die->transferred_at && $is4LcReady;
+                $is4LcAlreadyTransferred = in_array((string) $die->lot4_alert_status, [
+                    'transferred_to_mtn_4lc',
+                    '4lc_in_progress',
+                    '4lc_additional_repair',
+                    '4lc_completed',
+                ], true);
+
+                return $is4LcReady && !$is4LcAlreadyTransferred;
             })
             ->map(function ($die) {
                 return $die instanceof DieModel ? $this->formatDie($die) : null;
@@ -210,14 +217,23 @@ class TransferDiesController extends Controller
 
         $dies = $dies
             ->filter(function ($die) {
-                // return $die instanceof DieModel && $die->ppm_status === 'red';
                 if (!$die instanceof DieModel) {
                     return false;
                 }
 
                 $is4LotReady = $die->lot4_alert_status === '4lc_approved' || $die->ppm_alert_status === '4lc_approved';
+                $is4LotAlreadyTransferred = in_array((string) $die->lot4_alert_status, [
+                    'transferred_to_mtn_4lc',
+                    '4lc_in_progress',
+                    '4lc_additional_repair',
+                    '4lc_completed',
+                ], true);
 
-                return !$die->transferred_at && ($die->ppm_status === 'red' || $is4LotReady);
+                if ($is4LotReady) {
+                    return !$is4LotAlreadyTransferred;
+                }
+
+                return !$die->transferred_at && $die->ppm_status === 'red';
             })
             ->values();
 
@@ -304,6 +320,7 @@ class TransferDiesController extends Controller
             'transferred_by' => $die->transferred_by,
             'transfer_from_location' => $die->transfer_from_location,
             'red_alerted_at' => $die->red_alerted_at?->format('d-M-Y H:i'),
+            'lot4_schedule_approved_at' => $die->lot4_schedule_approved_at?->format('d-M-Y H:i'),
             'ppm_finished_at' => $die->ppm_finished_at?->format('d-M-Y H:i'),
         ];
     }
